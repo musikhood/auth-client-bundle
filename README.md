@@ -1,38 +1,38 @@
 # auth-client-bundle
 
-Symfony bundle providing cookie-based authentication for microservices that
-delegate identity to an external editor_v3 auth server.
+Symfony bundle dla mikroserwisów, które delegują uwierzytelnianie do
+zewnętrznego auth servera (editor_v3) i wystawiają front-endowi spójny
+kontrakt oparty na ciasteczkach HttpOnly.
 
-The bundle owns the full HTTP-facing flow — `/api/login`, `/api/logout`,
-`/api/token/refresh`, `/api/v1/user/me` — JWT/JWKS validation, the cookie
-contract (`BEARER` + `refresh_token`, both HttpOnly), the local user mirror
-syncer and a circuit-breaker'd introspection listener that revalidates the
-session every 30 s against the auth server.
+Bundle obsługuje całą warstwę HTTP — endpointy `/api/login`, `/api/logout`,
+`/api/token/refresh`, `/api/v1/user/me` — walidację JWT/JWKS, kontrakt
+ciasteczek (`BEARER` + `refresh_token`, oba HttpOnly), lokalną kopię
+użytkownika z lazy upsert oraz listener z circuit breakerem, który co 30 s
+weryfikuje sesję w auth serverze.
 
-The frontend never sees the JWT. It just uses `withCredentials: true` and an
-axios interceptor that retries on `401` via `/api/token/refresh`. A frontend
-written for the auth server itself works unmodified against any microservice
-using this bundle.
+Front nigdy nie widzi JWT. Używa `withCredentials: true` plus interceptora
+axiosa, który na `401` woła `/api/token/refresh`. Front napisany przeciw
+samemu auth serverowi działa bez zmian z dowolnym mikroserwisem
+korzystającym z tej paczki.
 
-## Requirements
+## Wymagania
 
 - PHP `>=8.2`
 - Symfony `^6.4 || ^7.0` (security-bundle, framework-bundle, http-client)
-- An ORM (Doctrine recommended) on the consuming side — the bundle ships only
-  interfaces (`PanelUserInterface`, `PanelUserRepositoryInterface`); the
-  actual entity and repository live in the consumer.
+- ORM po stronie konsumenta (zalecany Doctrine) — paczka dostarcza tylko
+  interfejsy (`PanelUserInterface`, `PanelUserRepositoryInterface`); konkretną
+  encję i repozytorium tworzy konsument.
 
-## Installation
+## Instalacja
 
-### 1. Configure the Flex endpoint
+### 1. Dodaj endpoint Symfony Flex
 
-The bundle ships a Symfony Flex recipe that wires up `bundles.php`,
-`config/packages/auth_client.yaml`, the routes import, and the env vars.
-The recipe is hosted at
+Bundle dostarcza recipe Symfony Flex, które konfiguruje `bundles.php`,
+`config/packages/auth_client.yaml`, import tras i zmienne środowiskowe.
+Recipe siedzi w
 [musikhood/symfony-recipes](https://github.com/musikhood/symfony-recipes).
 
-Add the endpoint to the **consuming app's** `composer.json` (one-time
-setup):
+Dodaj endpoint do `composer.json` **w aplikacji konsumenta** (jednorazowo):
 
 ```json
 {
@@ -47,67 +47,55 @@ setup):
 }
 ```
 
-Keep `flex://defaults` after your endpoint — it keeps the official Symfony
-recipes (Doctrine, Mailer, etc.) working.
+Zostaw `flex://defaults` po swoim endpoincie — bez tego nie będą działać
+oficjalne recipes Symfony (Doctrine, Mailer itd.).
 
-### 2. Add the package as a Composer repository
-
-Until the bundle lands on Packagist, declare the GitHub repo as a VCS
-repository in the consumer's `composer.json`:
-
-```json
-{
-    "repositories": [
-        { "type": "vcs", "url": "https://github.com/musikhood/auth-client-bundle.git" }
-    ]
-}
-```
-
-### 3. Install
+### 2. Zainstaluj paczkę
 
 ```bash
 composer require musikhood/auth-client-bundle:^0.1
 ```
 
-Flex will:
+Flex zrobi automatycznie:
 
-- register `Musikhood\AuthClient\AuthClientBundle` in `config/bundles.php`
-- create `config/packages/auth_client.yaml` with the env-var template
-- create `config/routes/auth_client.yaml` importing the bundle's routes
-- append the `AUTH_*` env keys to `.env`
-- print a list of the manual steps still required (Section 4 below)
+- zarejestruje `Musikhood\AuthClient\AuthClientBundle` w `config/bundles.php`
+- utworzy `config/packages/auth_client.yaml` z szablonem na zmienne środowiskowe
+- utworzy `config/routes/auth_client.yaml` importujący trasy paczki
+- doda klucze `AUTH_*` do `.env`
+- wyświetli listę kroków, które musisz dokończyć ręcznie (sekcja 3 niżej)
 
-If you are seeing a `composer require` hang on "Resolving dependencies"
-without the recipe running, either Flex is not installed in the consumer
-(`composer require symfony/flex`) or the endpoint config from Step 1 is
-missing.
+Jeśli `composer require` nie pokaże komunikatu post-install, prawdopodobnie:
+- Flex nie jest zainstalowany w konsumencie (`composer require symfony/flex`)
+- brakuje konfiguracji endpointu z kroku 1
+- paczka była już zainstalowana wcześniej — zrób `composer remove
+  musikhood/auth-client-bundle && composer clear-cache` i powtórz `require`
 
-### 4. Manual steps still required
+### 3. Kroki, które musisz wykonać ręcznie
 
-The recipe takes care of everything that is **safe** to do automatically.
-Five things still need a human — they all touch consumer-specific code paths
-that the recipe cannot guess:
+Recipe robi tylko to, co bezpiecznie da się zautomatyzować. Pięć rzeczy
+wymaga jeszcze Twojej ręki — wszystkie dotykają miejsc specyficznych dla
+projektu, których recipe nie może zgadnąć.
 
-#### 4.1. Set the env vars
+#### 3.1. Ustaw zmienne środowiskowe
 
-In `.env.local` (or your secrets manager):
+W `.env.local` (albo Twoim secrets manager):
 
 ```dotenv
-AUTH_BASE_URL=https://auth.your-domain.com
+AUTH_BASE_URL=https://auth.twoja-domena.com
 AUTH_PANEL_ID=01234567-89ab-cdef-0123-456789abcdef
-AUTH_CLIENT_ID=<from auth-server admin panel>
-AUTH_CLIENT_SECRET=<from auth-server admin panel>
+AUTH_CLIENT_ID=<z panelu admin auth servera>
+AUTH_CLIENT_SECRET=<z panelu admin auth servera>
 AUTH_COOKIE_SECURE=1
 ```
 
-`AUTH_COOKIE_SECURE` should be `1` in production (HTTPS) and `0` only for
-local HTTP dev.
+`AUTH_COOKIE_SECURE` ustaw na `1` w produkcji (HTTPS), `0` tylko dla
+lokalnego deva po HTTP.
 
-#### 4.2. Create the User entity
+#### 3.2. Stwórz encję `User`
 
-The bundle never writes a user table — your app does. Implement
-`Musikhood\AuthClient\Contract\PanelUserInterface` with a Doctrine entity
-(reference: [`docs/example-entity.php`](docs/example-entity.php)):
+Paczka nigdy nie pisze do tabeli użytkowników — to robi konsument.
+Zaimplementuj `Musikhood\AuthClient\Contract\PanelUserInterface`
+(referencja: [`docs/example-entity.php`](docs/example-entity.php)):
 
 ```php
 // src/Entity/User.php
@@ -191,14 +179,18 @@ class User implements PanelUserInterface
 }
 ```
 
-If your project uses a non-default location for entities (e.g. DDD with
-`src/Domain/User/Entity/User.php`), put the class wherever you like — only
-the `PanelUserInterface` contract matters to the bundle.
+Jeśli używasz innej lokalizacji niż `src/Entity/` (np. DDD ze strukturą
+`src/Domain/User/Entity/User.php`), umieść klasę gdziekolwiek — paczka
+patrzy tylko na kontrakt `PanelUserInterface`.
 
-#### 4.3. Create the User repository
+#### 3.3. Stwórz `UserRepository`
 
-Implement `Musikhood\AuthClient\Contract\PanelUserRepositoryInterface`
-(reference: [`docs/example-repository.php`](docs/example-repository.php)):
+Zaimplementuj `Musikhood\AuthClient\Contract\PanelUserRepositoryInterface`
+i powiąż go z interfejsem przez atrybut `#[AsAlias]`. Dzięki temu **nie
+musisz nic dopisywać do `services.yaml`** — Symfony sam podepnie repo pod
+interfejs.
+
+Referencja: [`docs/example-repository.php`](docs/example-repository.php).
 
 ```php
 // src/Repository/UserRepository.php
@@ -210,8 +202,10 @@ use Doctrine\Persistence\ManagerRegistry;
 use Musikhood\AuthClient\Contract\PanelUserInterface;
 use Musikhood\AuthClient\Contract\PanelUserRepositoryInterface;
 use Ramsey\Uuid\UuidInterface;
+use Symfony\Component\DependencyInjection\Attribute\AsAlias;
 
 /** @extends ServiceEntityRepository<User> */
+#[AsAlias(id: PanelUserRepositoryInterface::class)]
 class UserRepository extends ServiceEntityRepository implements PanelUserRepositoryInterface
 {
     public function __construct(ManagerRegistry $registry)
@@ -250,7 +244,8 @@ class UserRepository extends ServiceEntityRepository implements PanelUserReposit
 }
 ```
 
-Then alias the interface to your concrete repository in `config/services.yaml`:
+Atrybut `#[AsAlias]` wymaga Symfony 6.1+. Jeśli z jakiegoś powodu wolisz
+mapowanie w YAML-u, zamiast atrybutu dodaj do `config/services.yaml`:
 
 ```yaml
 services:
@@ -258,22 +253,22 @@ services:
         alias: App\Repository\UserRepository
 ```
 
-The bundle resolves `PanelUserRepositoryInterface` from the container —
-without this alias, the authenticator and `MeController` will fail with
-"Cannot autowire" at compile time.
+Paczka rozwiązuje `PanelUserRepositoryInterface` z kontenera DI — bez
+jednego z tych dwóch wariantów authenticator i `MeController` wywalą się
+przy starcie z błędem "Cannot autowire".
 
-#### 4.4. Configure security
+#### 3.4. Skonfiguruj security
 
-The recipe does **not** touch `config/packages/security.yaml` because most
-projects already have a custom firewall config and merging would be unsafe.
-Add this snippet by hand:
+Recipe **nie modyfikuje** `config/packages/security.yaml`, bo większość
+projektów ma już własny firewall i auto-merge byłby ryzykowny. Skopiuj ten
+fragment ręcznie:
 
 ```yaml
 # config/packages/security.yaml
 security:
     providers:
-        # The authenticator returns the User directly — there is no source
-        # for Symfony to reload from, so the in_memory provider is correct.
+        # Authenticator zwraca User-a wprost — Symfony nie ma skąd go
+        # przeładować, więc in_memory provider jest poprawny.
         in_memory:
             memory: ~
 
@@ -283,9 +278,9 @@ security:
             security: false
 
         login:
-            # Login, logout and refresh must be public — the authenticator
-            # cannot run on /api/token/refresh because the access_token is
-            # invalid by the time the request arrives there.
+            # Login, logout i refresh muszą być publiczne — authenticator
+            # nie może działać na /api/token/refresh, bo access_token jest
+            # wtedy już nieważny.
             pattern: ^/api/(login|logout|token/(refresh|invalidate))$
             stateless: true
             security: false
@@ -301,53 +296,55 @@ security:
         - { path: ^/api/(login|logout|token/(refresh|invalidate)), roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
-    # Optional: define your role hierarchy here. The bundle does not
-    # prescribe any roles — `panel_roles` from the JWT are exposed verbatim
-    # with a ROLE_ prefix.
+    # Opcjonalnie: zdefiniuj hierarchię ról. Paczka nie narzuca żadnych
+    # konkretnych ról — `panel_roles` z JWT są wystawiane wprost z
+    # prefiksem ROLE_.
     role_hierarchy:
         ROLE_ADMIN: [ROLE_USER]
 ```
 
-#### 4.5. Create the database table
+#### 3.5. Stwórz tabelę w bazie
 
-Either copy [`docs/example-migration.sql`](docs/example-migration.sql)
-straight into your migration tool, or generate one from the entity:
+Albo skopiuj [`docs/example-migration.sql`](docs/example-migration.sql)
+prosto do swojego narzędzia migracji, albo wygeneruj migrację z encji:
 
 ```bash
 php bin/console doctrine:migrations:diff
 php bin/console doctrine:migrations:migrate
 ```
 
-The schema needs an `id` (UUID), `email` (unique), `display_name`,
-`roles_for_panel` (JSON), `disabled` (bool), `last_synced_at`. The exact
-mapping is in `docs/example-entity.php`.
+Tabela potrzebuje kolumn: `id` (UUID), `email` (unique), `display_name`,
+`roles_for_panel` (JSON), `disabled` (bool), `last_synced_at`. Pełny
+mapping w `docs/example-entity.php`.
 
-## Frontend contract
+## Kontrakt z front-endem
 
-The frontend never sees the JWT. It needs three things:
+Front nigdy nie widzi JWT. Wymaga trzech rzeczy:
 
-- `axios.defaults.withCredentials = true` (or the equivalent `fetch` option)
-- on `401` from any `/api/*` call: `POST /api/token/refresh`, then retry
-- on `401` from `/api/token/refresh`: clear local UI state, redirect to login
+- `axios.defaults.withCredentials = true` (lub równowartość `fetch` z
+  `credentials: 'include'`)
+- na `401` z dowolnego `/api/*`: `POST /api/token/refresh`, potem retry
+- na `401` z `/api/token/refresh`: czyść lokalny stan UI, redirect do logowania
 
-This contract is identical to talking to the auth server directly, so an
-existing frontend can switch backends without changes.
+To dokładnie ten sam kontrakt co przy gadaniu wprost z auth serverem,
+więc istniejący front przesiada się na inny backend bez zmian.
 
-## Configuration reference
+## Pełna konfiguracja
 
-All keys with defaults — set in `config/packages/auth_client.yaml`. The
-recipe ships only the required keys (the four `AUTH_*` env vars + cookie
-secure); everything below has a sensible default.
+Wszystkie klucze z domyślnymi wartościami — ustawiasz je w
+`config/packages/auth_client.yaml`. Recipe wgrywa tylko klucze wymagane
+(cztery `AUTH_*` env-y plus `cookie.secure`); reszta poniżej ma sensowne
+defaulty.
 
 ```yaml
 auth_client:
-    base_url:      '%env(AUTH_BASE_URL)%'      # required
-    panel_id:      '%env(AUTH_PANEL_ID)%'      # required
-    client_id:     '%env(AUTH_CLIENT_ID)%'     # required
-    client_secret: '%env(AUTH_CLIENT_SECRET)%' # required
+    base_url:      '%env(AUTH_BASE_URL)%'      # wymagane
+    panel_id:      '%env(AUTH_PANEL_ID)%'      # wymagane
+    client_id:     '%env(AUTH_CLIENT_ID)%'     # wymagane
+    client_secret: '%env(AUTH_CLIENT_SECRET)%' # wymagane
 
-    jwks_cache_ttl: 3600         # JWKS document cache TTL (seconds)
-    validation_cache_ttl: 30     # /me introspection cache per user (seconds)
+    jwks_cache_ttl: 3600         # TTL cache dokumentu JWKS (sekundy)
+    validation_cache_ttl: 30     # TTL cache introspekcji /me per user (sekundy)
 
     cookie:
         access_name: BEARER
@@ -356,26 +353,26 @@ auth_client:
         secure: '%env(bool:default::AUTH_COOKIE_SECURE)%'
         http_only: true
         same_site: lax           # lax | strict | none
-        lifetime: 2592000        # 30 days — should match refresh_token TTL upstream
+        lifetime: 2592000        # 30 dni — powinno odpowiadać TTL refresh_token w auth serverze
 
     circuit_breaker:
-        failure_threshold: 3     # consecutive /me failures before opening
-        open_seconds: 60         # how long the breaker stays open
+        failure_threshold: 3     # ile kolejnych błędów /me otwiera breaker
+        open_seconds: 60         # ile sekund breaker jest otwarty
 
     http:
         timeout: 5.0
         max_duration: 10.0
 ```
 
-## Endpoints exposed by the bundle
+## Endpointy wystawiane przez paczkę
 
-| Method | Path | Purpose |
+| Metoda | Ścieżka | Opis |
 |---|---|---|
-| `POST` | `/api/login` | Exchange `{username, password}` for `BEARER` + `refresh_token` cookies. |
-| `POST` | `/api/logout` (alias `/api/token/invalidate`) | Clear cookies, invalidate refresh token upstream. |
-| `POST` | `/api/token/refresh` | Mint a fresh cookie pair from the refresh token. |
-| `GET` | `/api/v1/user/me` | Return the authenticated user (id, email, roles, disabled). |
+| `POST` | `/api/login` | Wymienia `{username, password}` na ciasteczka `BEARER` + `refresh_token`. |
+| `POST` | `/api/logout` (alias `/api/token/invalidate`) | Czyści ciasteczka, unieważnia refresh token w auth serverze. |
+| `POST` | `/api/token/refresh` | Generuje nową parę ciasteczek z refresh tokena. |
+| `GET` | `/api/v1/user/me` | Zwraca dane zalogowanego użytkownika (id, email, role, disabled). |
 
-## License
+## Licencja
 
-MIT — see [LICENSE](LICENSE).
+MIT — patrz [LICENSE](LICENSE).

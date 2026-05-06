@@ -1,12 +1,11 @@
--- Example schema for the local user mirror.
+-- Przykładowy schemat tabeli lokalnej kopii użytkownika.
 --
--- The bundle does not own this table — the consumer creates and migrates it.
--- The columns mirror what `PanelUserInterface` exposes; see also
--- `docs/example-entity.php` for a Doctrine ORM mapping that produces
--- exactly this schema.
+-- Paczka nie tworzy tej tabeli — robi to konsument w swojej migracji.
+-- Kolumny odpowiadają polom z `PanelUserInterface`. Pełny mapping ORM
+-- jest w `docs/example-entity.php`.
 --
--- Tested against PostgreSQL 14+. For MySQL 8 swap UUID type for BINARY(16)
--- or CHAR(36), and JSON column type stays the same.
+-- Sprawdzone na PostgreSQL 14+. Dla MySQL 8 zamień UUID na BINARY(16) lub
+-- CHAR(36), JSON zostaje bez zmian.
 
 CREATE TABLE users (
     id UUID NOT NULL,
@@ -21,6 +20,6 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX uniq_users_email ON users (email);
 CREATE INDEX idx_users_email ON users (email);
 
-COMMENT ON COLUMN users.id IS '(DC2Type:uuid) — comes from JWT claim user_id, never generated locally.';
+COMMENT ON COLUMN users.id IS '(DC2Type:uuid) — pochodzi z claimu user_id w JWT, nie generujemy lokalnie.';
 COMMENT ON COLUMN users.last_synced_at IS '(DC2Type:datetime_immutable)';
-COMMENT ON COLUMN users.roles_for_panel IS 'Panel-scoped role names without the ROLE_ prefix.';
+COMMENT ON COLUMN users.roles_for_panel IS 'Nazwy ról panelu bez prefiksu ROLE_.';

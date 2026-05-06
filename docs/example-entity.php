@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-// EXAMPLE — copy this into your application's src/Entity/User.php and adapt
-// the namespace + repositoryClass. The bundle never touches this file; it
-// only knows about Musikhood\AuthClient\Contract\PanelUserInterface.
+// PRZYKŁAD — skopiuj do swojego src/Entity/User.php i dostosuj namespace +
+// repositoryClass. Paczka nie dotyka tego pliku — patrzy tylko na kontrakt
+// Musikhood\AuthClient\Contract\PanelUserInterface.
 
 namespace App\Entity;
 

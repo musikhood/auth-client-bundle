@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-06
+
+### Changed
+
+- README, dokumentacja w `docs/` i post-install message Flex recipe
+  przetłumaczone na język polski.
+- Przykładowe `UserRepository` z `docs/example-repository.php` używa teraz
+  atrybutu `#[AsAlias]` zamiast YAML-owego aliasu — wymaga Symfony 6.1+,
+  zero zmian w `services.yaml` po stronie konsumenta.
+
 ## [0.1.1] - 2026-05-06
 
 ### Added
