@@ -26,6 +26,9 @@ services:
         resource: '../../*'
         exclude:
             - '../../{AuthClientBundle.php,DependencyInjection,Contract,Dto,Exception,Resources}'
+            # Stub-klasa rejestrowana ręcznie przez EnsurePanelUserRepositoryPass
+            # tylko gdy konsument nie podpiął własnej implementacji repo.
+            - '../../Security/MissingPanelUserRepository.php'
 
     # Controllers must be registered with the controller tag so AbstractController
     # gets its container set and #[Route] attributes are picked up by the

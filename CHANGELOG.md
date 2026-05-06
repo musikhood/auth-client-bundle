@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-07
+
+### Fixed
+
+- `composer require musikhood/auth-client-bundle` nie wywala już błędu
+  "Cannot autowire `PanelUserRepositoryInterface`" przy automatycznym
+  `cache:clear` w post-install. Bundle rejestruje teraz stub
+  (`MissingPanelUserRepository`) jeśli konsument nie podpiął jeszcze
+  swojej implementacji repo. Stub rzuca jasny `RuntimeException`
+  z polskim komunikatem dopiero przy pierwszym realnym użyciu auth flow,
+  kierując do README. Po dodaniu `#[AsAlias]` (lub aliasu w
+  `services.yaml`) Symfony automatycznie używa prawdziwego repo —
+  stub jest nadpisywany przy najbliższym `cache:clear`.
+
 ## [0.1.2] - 2026-05-06
 
 ### Changed
