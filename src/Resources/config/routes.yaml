@@ -1,0 +1,3 @@
+auth_client:
+    resource: '../../Controller/'
+    type: attribute

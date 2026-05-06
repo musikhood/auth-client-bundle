@@ -1,0 +1,36 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+        bind:
+            $authBaseUrl: '%auth_client.base_url%'
+            $authPanelId: '%auth_client.panel_id%'
+            $authClientId: '%auth_client.client_id%'
+            $authClientSecret: '%auth_client.client_secret%'
+            $jwksCacheTtl: '%auth_client.jwks_cache_ttl%'
+            $accessCookieName: '%auth_client.cookie.access_name%'
+            $refreshCookieName: '%auth_client.cookie.refresh_name%'
+            $cookiePath: '%auth_client.cookie.path%'
+            $cookieSecure: '%auth_client.cookie.secure%'
+            $cookieHttpOnly: '%auth_client.cookie.http_only%'
+            $cookieSameSite: '%auth_client.cookie.same_site%'
+            $cookieLifetime: '%auth_client.cookie.lifetime%'
+            $authHttpTimeout: '%auth_client.http.timeout%'
+            $authHttpMaxDuration: '%auth_client.http.max_duration%'
+            $validationCacheTtl: '%auth_client.validation_cache_ttl%'
+            $circuitBreakerFailureThreshold: '%auth_client.circuit_breaker.failure_threshold%'
+            $circuitBreakerOpenSeconds: '%auth_client.circuit_breaker.open_seconds%'
+
+    Musikhood\AuthClient\:
+        resource: '../../*'
+        exclude:
+            - '../../{AuthClientBundle.php,DependencyInjection,Contract,Dto,Exception,Resources}'
+
+    # Controllers must be registered with the controller tag so AbstractController
+    # gets its container set and #[Route] attributes are picked up by the
+    # routing loader.
+    Musikhood\AuthClient\Controller\:
+        resource: '../../Controller/*'
+        tags: ['controller.service_arguments']
+        public: true
