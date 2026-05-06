@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-06
+
+### Added
+
+- Symfony Flex recipe at [musikhood/symfony-recipes](https://github.com/musikhood/symfony-recipes)
+  automating bundle registration, default config templates, env vars and a
+  post-install message listing the manual setup steps.
+
+### Changed
+
+- README rewritten with full installation walkthrough, complete reference
+  implementations of `User` and `UserRepository`, the security.yaml snippet
+  to copy by hand, and a configuration reference for every supported key.
+
 ## [0.1.0] - 2026-05-06
 
 ### Added
