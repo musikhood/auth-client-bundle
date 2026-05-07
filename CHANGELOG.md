@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-07
+
+### Fixed
+
+- `UserMirrorSyncer::upsert(JwtClaims)` zachowywał się jak full update przy
+  istniejącej lokalnej kopii — claimy z JWT (potencjalnie stale, bo auth
+  server nie podbija tokenVersion przy zmianach ról) nadpisywały świeżo
+  zsynchronizowane dane z `syncFromMe()`. Objawiało się migotaniem ról
+  między requestami: po `F5` świeże role z `/me`, po kolejnym `F5` —
+  stare role z JWT.
+  Teraz `upsert()` jest **bootstrap only** — przy istniejącej kopii zwraca
+  ją bez zmian. Pełna synchronizacja jest wyłączną odpowiedzialnością
+  `AuthValidationListener` → `syncFromMe()` (cache TTL ~30 s).
+
 ## [0.2.0] - 2026-05-07
 
 Wersja zsynchronizowana z auth serverem `editor_v3_backend@797be72`, gdzie

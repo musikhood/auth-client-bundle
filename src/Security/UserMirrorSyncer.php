@@ -13,14 +13,15 @@ use Musikhood\AuthClient\Jwt\JwtClaims;
  * Lazy-upsert lokalnej kopii użytkownika z dwóch źródeł:
  *
  *   1. {@see self::upsert()} — woła authenticator przy każdym
- *      uwierzytelnionym żądaniu. Wkład: claimy świeżo zwalidowanego JWT.
- *      Brak flagi disabled (login = na pewno nie zablokowany).
+ *      uwierzytelnionym żądaniu. Tylko BOOTSTRAP — tworzy lokalną kopię
+ *      przy pierwszym kontakcie z userem. Przy istniejącej kopii NIE
+ *      modyfikuje żadnych pól, bo claimy JWT mogą być stale (auth server
+ *      nie podbija tokenVersion przy zmianach ról / displayName).
  *
  *   2. {@see self::syncFromMe()} — woła AuthValidationListener po udanej
- *      introspekcji /me. Wkład: pełna kopia z auth servera, w tym
- *      flaga disabled. To jest źródło prawdy do propagacji zmian
- *      ról / displayName / disabled bez konieczności podbijania
- *      tokenVersion w auth serverze.
+ *      introspekcji /me (cache TTL ~30s). Pełen update lokalnej kopii
+ *      (email, displayName, role per-panel, disabled). To jedyne źródło
+ *      prawdy do propagacji zmian wykonanych w panelu admin auth servera.
  *
  * Flush robimy tylko jeśli coś się faktycznie zmieniło — typowy request
  * nie kosztuje DB write'a.
@@ -35,29 +36,30 @@ final readonly class UserMirrorSyncer
     {
         $existing = $this->userRepository->findById($claims->userId);
 
-        if (null === $existing) {
-            $user = $this->userRepository->createFromClaims(
-                id: $claims->userId,
-                email: $claims->email,
-                displayName: $claims->displayName,
-                rolesForPanel: $claims->panelRoles,
-            );
-            $this->userRepository->save($user);
-            $this->userRepository->flush();
-
-            return $user;
+        if (null !== $existing) {
+            // Lokalna kopia istnieje — nic nie ruszamy. Pełna synchronizacja
+            // (email, displayName, role per-panel, disabled) jest robotą
+            // syncFromMe() wołanego przez AuthValidationListener z TTL ~30s.
+            // Gdyby authenticator nadpisywał tutaj polami z JWT, claimy
+            // sprzed zmiany ról cofałyby świeżo-zsynchronizowane wartości
+            // przy każdym kolejnym requeście (auth server nie podbija
+            // tokenVersion przy zmianach ról, więc JWT może być stale).
+            return $existing;
         }
 
-        if ($this->hasChangedFromClaims($existing, $claims)) {
-            $existing->syncFromClaims(
-                email: $claims->email,
-                displayName: $claims->displayName,
-                rolesForPanel: $claims->panelRoles,
-            );
-            $this->userRepository->flush();
-        }
+        // Pierwszy kontakt z tym userem w mikroserwisie — bootstrap z
+        // claimów JWT. Po pierwszym /me (max ~30s) syncFromMe nadpisze
+        // świeżymi danymi z auth servera, jeśli różnią się od JWT.
+        $user = $this->userRepository->createFromClaims(
+            id: $claims->userId,
+            email: $claims->email,
+            displayName: $claims->displayName,
+            rolesForPanel: $claims->panelRoles,
+        );
+        $this->userRepository->save($user);
+        $this->userRepository->flush();
 
-        return $existing;
+        return $user;
     }
 
     /**
@@ -113,18 +115,6 @@ final readonly class UserMirrorSyncer
         return $existing;
     }
 
-    private function hasChangedFromClaims(PanelUserInterface $user, JwtClaims $claims): bool
-    {
-        if ($user->getEmail() !== $claims->email) {
-            return true;
-        }
-        if ($user->getDisplayName() !== $claims->displayName) {
-            return true;
-        }
-
-        return $this->panelRolesChanged($user->getRolesForPanel(), $claims->panelRoles);
-    }
-
     private function hasChangedFromUserData(PanelUserInterface $user, UserData $data): bool
     {
         if ($user->getEmail() !== $data->email) {
@@ -134,16 +124,9 @@ final readonly class UserMirrorSyncer
             return true;
         }
 
-        return $this->panelRolesChanged($user->getRolesForPanel(), $data->panelRoles);
-    }
-
-    /**
-     * @param list<string> $current
-     * @param list<string> $incoming
-     */
-    private function panelRolesChanged(array $current, array $incoming): bool
-    {
+        $current = $user->getRolesForPanel();
         sort($current);
+        $incoming = $data->panelRoles;
         sort($incoming);
 
         return $current !== $incoming;

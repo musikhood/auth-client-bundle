@@ -323,12 +323,17 @@ Auth server jest jedynym źródłem prawdy dla ról, displayName i flagi
 `disabled`. Lokalna kopia użytkownika w mikroserwisie jest aktualizowana
 w dwóch momentach:
 
-1. **Login / refresh** — paczka odczytuje claimy z świeżego JWT
-   (email, displayName, role per-panel) i robi `upsert` lokalnej kopii.
+1. **Pierwszy kontakt z userem (bootstrap)** — gdy authenticator widzi
+   zalogowanego usera, którego jeszcze nie ma w lokalnej tabeli, paczka
+   tworzy lokalną kopię z claimów świeżego JWT (email, displayName,
+   role per-panel). To jednorazowe — przy każdym kolejnym requeście
+   tego usera authenticator NIE rusza już lokalnej kopii.
 2. **Co ~30s na żądanie zalogowanego usera** — `AuthValidationListener`
-   woła `/api/v1/user/me` na auth serverze i synchronizuje pełen payload,
-   w tym flagę `disabled`. Krok pomijany jeśli wynik z poprzedniego
-   wywołania jeszcze leży w cache (`validation_cache_ttl`, domyślnie 30s).
+   woła `/api/v1/user/me` na auth serverze i synchronizuje pełen payload
+   (email, displayName, role per-panel, flaga `disabled`). To jest jedyna
+   ścieżka aktualizacji istniejącej kopii. Krok pomijany jeśli wynik
+   z poprzedniego wywołania jeszcze leży w cache
+   (`validation_cache_ttl`, domyślnie 30s).
 
 W szczególności **paczka nie używa lokalnej flagi `isDisabled()` do
 podejmowania decyzji o autoryzacji**. Gating disabled userów leci
