@@ -22,7 +22,7 @@ final readonly class JwtClaims
     public function __construct(
         public UuidInterface $userId,
         public string $email,
-        public ?string $username,
+        public ?string $displayName,
         public string $panelId,
         public ?string $panelName,
         public array $panelRoles,

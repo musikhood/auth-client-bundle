@@ -207,10 +207,40 @@ final readonly class AuthBackendClient
             throw new AuthBackendException('Niepoprawny payload /me (brak id, email lub roles)');
         }
 
+        $displayName = isset($payload['displayName']) && is_string($payload['displayName']) && '' !== $payload['displayName']
+            ? $payload['displayName']
+            : null;
+
+        $panelId = null;
+        if (isset($payload['panelId']) && is_string($payload['panelId']) && '' !== $payload['panelId']) {
+            try {
+                $panelId = Uuid::fromString($payload['panelId']);
+            } catch (\Throwable) {
+                // niepoprawny UUID — traktujemy tak samo jak brak panelu
+                $panelId = null;
+            }
+        }
+
+        $panelName = isset($payload['panelName']) && is_string($payload['panelName']) && '' !== $payload['panelName']
+            ? $payload['panelName']
+            : null;
+
+        $panelRolesRaw = $payload['panelRoles'] ?? [];
+        $panelRoles = is_array($panelRolesRaw)
+            ? array_values(array_filter($panelRolesRaw, 'is_string'))
+            : [];
+
+        $disabled = isset($payload['disabled']) ? (bool) $payload['disabled'] : false;
+
         return new UserData(
             id: Uuid::fromString($id),
             email: $email,
+            displayName: $displayName,
             roles: array_values(array_filter($roles, 'is_string')),
+            panelId: $panelId,
+            panelName: $panelName,
+            panelRoles: $panelRoles,
+            disabled: $disabled,
         );
     }
 }

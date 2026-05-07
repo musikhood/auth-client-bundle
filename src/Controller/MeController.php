@@ -12,11 +12,16 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 /**
- * Zwraca dane zalogowanego użytkownika z lokalnej kopii. Nie woła auth servera.
+ * Zwraca dane zalogowanego użytkownika z lokalnej kopii.
  *
- * Format zgodny z typem User na froncie: {id, email, roles, disabled}.
- * Pole `roles` to role panelu (z prefiksem ROLE_), wyliczone z `panel_roles`
- * z JWT. Globalnych ról z claimu `roles` tu nie wystawiamy.
+ * Lokalna kopia jest aktualizowana z auth servera w dwóch miejscach:
+ *   - przy login / refresh — z claimów świeżego JWT (email, displayName, role per panel),
+ *   - co ~30s przez {@see \Musikhood\AuthClient\EventListener\AuthValidationListener}
+ *     — z pełnego payloadu /api/v1/user/me (w tym flaga disabled).
+ *
+ * Pole `roles` to wynik {@see PanelUserInterface::getRoles()} — role panelu z
+ * prefiksem ROLE_, wzbogacone o ROLE_USER. Globalnych ról z claimu `roles`
+ * nie wystawiamy.
  */
 class MeController extends AbstractController
 {
@@ -31,6 +36,7 @@ class MeController extends AbstractController
             [
                 'id' => $user->getId()->toString(),
                 'email' => $user->getEmail(),
+                'displayName' => $user->getDisplayName(),
                 'roles' => $user->getRoles(),
                 'disabled' => $user->isDisabled(),
             ],

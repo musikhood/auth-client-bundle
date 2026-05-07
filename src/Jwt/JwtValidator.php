@@ -123,8 +123,12 @@ final class JwtValidator
             throw new InvalidJwtException('user_id nie jest poprawnym UUID', 0, $e);
         }
 
-        $username = isset($claims['username']) && is_string($claims['username']) ? $claims['username'] : null;
-        $panelName = isset($claims['panel_name']) && is_string($claims['panel_name']) ? $claims['panel_name'] : null;
+        // Auth server od pewnej wersji wystawia claim `display_name`. Starsze
+        // tokeny mają `username` z tą samą zawartością — czytamy oba dla
+        // kompatybilności wstecznej w okresie migracji.
+        $displayName = $this->stringClaim($claims, 'display_name')
+            ?? $this->stringClaim($claims, 'username');
+        $panelName = $this->stringClaim($claims, 'panel_name');
 
         $panelRolesRaw = $claims['panel_roles'] ?? [];
         $panelRoles = is_array($panelRolesRaw)
@@ -134,12 +138,22 @@ final class JwtValidator
         return new JwtClaims(
             userId: $userId,
             email: $email,
-            username: $username,
+            displayName: $displayName,
             panelId: $panelId,
             panelName: $panelName,
             panelRoles: $panelRoles,
             issuedAt: (new \DateTimeImmutable())->setTimestamp($iat),
             expiresAt: (new \DateTimeImmutable())->setTimestamp($exp),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $claims
+     */
+    private function stringClaim(array $claims, string $key): ?string
+    {
+        return isset($claims[$key]) && is_string($claims[$key]) && '' !== $claims[$key]
+            ? $claims[$key]
+            : null;
     }
 }

@@ -8,6 +8,7 @@ use Musikhood\AuthClient\Exception\AuthBackendException;
 use Musikhood\AuthClient\Http\AuthBackendClient;
 use Musikhood\AuthClient\Jwt\JwtClaims;
 use Musikhood\AuthClient\Security\JwtCookieAuthenticator;
+use Musikhood\AuthClient\Security\UserMirrorSyncer;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -42,6 +43,7 @@ final readonly class AuthValidationListener
 
     public function __construct(
         private AuthBackendClient $authBackendClient,
+        private UserMirrorSyncer $userMirrorSyncer,
         #[Autowire(service: 'cache.app')]
         private CacheItemPoolInterface $cache,
         private LoggerInterface $logger,
@@ -89,6 +91,21 @@ final readonly class AuthValidationListener
             // frontu wywoła /api/token/refresh, ten też zwróci 401, wyczyści
             // ciasteczka i dokończy wylogowanie.
             throw new UnauthorizedHttpException('Bearer', 'Token no longer valid upstream');
+        }
+
+        // Auth server zwrócił 200 — to nasze źródło prawdy. Synchronizujemy
+        // lokalną kopię (email, displayName, role per-panel, flaga disabled).
+        // Dzięki temu zmiany w panelu admin auth servera (zmiana ról,
+        // displayName, blokada/odblokowanie konta) propagują się do
+        // mikroserwisu w czasie cache TTL (~30s) bez konieczności
+        // podbijania tokenVersion.
+        $this->userMirrorSyncer->syncFromMe($userData);
+
+        if ($userData->disabled) {
+            // Konto zostało zablokowane na auth serverze, ale token jeszcze
+            // ważny. Odrzucamy żądanie. Front interceptor zrobi refresh,
+            // który auth server odrzuci 401 i wyczyści ciasteczka.
+            throw new UnauthorizedHttpException('Bearer', 'Account disabled upstream');
         }
 
         $this->markValidated($claims);

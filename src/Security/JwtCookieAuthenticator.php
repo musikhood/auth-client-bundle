@@ -80,10 +80,11 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
 
         $user = $this->userMirrorSyncer->upsert($claims);
 
-        if ($user->isDisabled()) {
-            // Lokalna kopia oznaczona jako zablokowana, odrzucamy.
-            throw new CustomUserMessageAuthenticationException('Konto zablokowane');
-        }
+        // Nie sprawdzamy lokalnego $user->isDisabled() — gating disabled
+        // userów leci wyłącznie przez AuthValidationListener, który po
+        // udanym /me ustawia świeżą wartość. Lokalne pole służy tylko do
+        // wyświetlenia (np. w /api/v1/user/me wystawianym przez paczkę),
+        // nigdy do podejmowania decyzji o autoryzacji.
 
         return new SelfValidatingPassport(
             new UserBadge($user->getUserIdentifier(), fn () => $user),

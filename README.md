@@ -317,6 +317,37 @@ Tabela potrzebuje kolumn: `id` (UUID), `email` (unique), `display_name`,
 `roles_for_panel` (JSON), `disabled` (bool), `last_synced_at`. Pełny
 mapping w `docs/example-entity.php`.
 
+## Synchronizacja z auth serverem
+
+Auth server jest jedynym źródłem prawdy dla ról, displayName i flagi
+`disabled`. Lokalna kopia użytkownika w mikroserwisie jest aktualizowana
+w dwóch momentach:
+
+1. **Login / refresh** — paczka odczytuje claimy z świeżego JWT
+   (email, displayName, role per-panel) i robi `upsert` lokalnej kopii.
+2. **Co ~30s na żądanie zalogowanego usera** — `AuthValidationListener`
+   woła `/api/v1/user/me` na auth serverze i synchronizuje pełen payload,
+   w tym flagę `disabled`. Krok pomijany jeśli wynik z poprzedniego
+   wywołania jeszcze leży w cache (`validation_cache_ttl`, domyślnie 30s).
+
+W szczególności **paczka nie używa lokalnej flagi `isDisabled()` do
+podejmowania decyzji o autoryzacji**. Gating disabled userów leci
+wyłącznie przez `/me` — co znaczy że:
+
+- Po **zablokowaniu** konta w panelu admin auth servera użytkownik
+  zostanie wylogowany w czasie max. `validation_cache_ttl` sekund.
+- Po **odblokowaniu** konta użytkownik znowu działa bez ponownego
+  logowania (jeśli JWT jest jeszcze ważny — w innym przypadku front
+  interceptor zrobi `/api/token/refresh` i auth server wystawi nowy).
+- Po zmianie ról / displayName w panelu admin nowe wartości pojawią się
+  w lokalnej kopii w czasie max. `validation_cache_ttl` sekund. Auth
+  server NIE podbija `tokenVersion` przy tych zmianach — istniejące JWT
+  zostają ważne, propagacja idzie przez `/me`.
+
+Lokalne pole `disabled` w encji konsumenta służy tylko do wyświetlenia
+(np. w panelu zarządzania userami w mikroserwisie). Aktualizowane
+automatycznie przez `syncFromMe()`.
+
 ## Kontrakt z front-endem
 
 Front nigdy nie widzi JWT. Wymaga trzech rzeczy:
@@ -371,7 +402,7 @@ auth_client:
 | `POST` | `/api/login` | Wymienia `{username, password}` na ciasteczka `BEARER` + `refresh_token`. |
 | `POST` | `/api/logout` (alias `/api/token/invalidate`) | Czyści ciasteczka, unieważnia refresh token w auth serverze. |
 | `POST` | `/api/token/refresh` | Generuje nową parę ciasteczek z refresh tokena. |
-| `GET` | `/api/v1/user/me` | Zwraca dane zalogowanego użytkownika (id, email, role, disabled). |
+| `GET` | `/api/v1/user/me` | Zwraca dane zalogowanego użytkownika (`id`, `email`, `displayName`, `roles`, `disabled`). Czyta z lokalnej kopii — nie wymaga round-tripa do auth servera. |
 
 ## Licencja
 

@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-07
+
+Wersja zsynchronizowana z auth serverem `editor_v3_backend@797be72`, gdzie
+displayName został wprowadzony jako pełnoprawne pole encji użytkownika,
+a `/api/v1/user/me` rozszerzono o panel context i flagę `disabled`.
+
+### Breaking changes
+
+- **`JwtClaims::$username` zmienione na `JwtClaims::$displayName`.**
+  Konsumenci paczki nie wołają `JwtClaims` bezpośrednio, więc upgrade nie
+  wymaga zmian w kodzie aplikacji — jedynie schemat tabeli `users` musi
+  mieć kolumnę `display_name` (`docs/example-migration.sql` od początku
+  miał, ale przy upgrade z v0.1.x sprawdź jeśli używałeś własnej migracji).
+- **`JwtCookieAuthenticator` przestaje sprawdzać lokalne
+  `$user->isDisabled()` przy authenticate.** Gating disabled userów jest
+  teraz robiony wyłącznie przez `AuthValidationListener` po udanym `/me`
+  (cache TTL ~30s). Rozwiązuje to dotychczasowy lock-in: po odblokowaniu
+  konta w panelu admin auth servera użytkownik znowu działa bez konieczności
+  ponownego logowania.
+- **`UserData` ma 5 nowych wymaganych pól w konstruktorze**: `displayName`,
+  `panelId`, `panelName`, `panelRoles`, `disabled`. Konsumenci paczki nie
+  konstruują tego DTO, więc nie ma to praktycznych konsekwencji — paczka
+  parsuje payload `/me` wewnętrznie.
+
+### Added
+
+- `UserMirrorSyncer::syncFromMe(UserData)` — pełna synchronizacja lokalnej
+  kopii użytkownika z payloadu `/api/v1/user/me`. Aktualizuje displayName,
+  role per-panel i flagę disabled.
+- `AuthValidationListener` po udanym `/me` woła `syncFromMe()` —
+  zmiany w panelu admin auth servera (zmiana ról, displayName,
+  blokada/odblokowanie) propagują się do mikroserwisu w czasie cache TTL
+  (~30s) bez konieczności podbijania `tokenVersion`.
+- `MeController` wystawia teraz pole `displayName` w odpowiedzi `/api/v1/user/me`.
+- `AuthValidationListener` odrzuca request 401 gdy `/me` zwraca 200 z
+  `disabled: true` (token jeszcze ważny, ale konto zablokowane). Front
+  interceptor odpali wtedy `/api/token/refresh`, który auth server odrzuci
+  i wyczyści ciasteczka.
+
+### Changed
+
+- `JwtValidator` czyta `display_name` z claimu, z fallbackiem na `username`
+  dla starszych tokenów wystawionych przed migracją auth servera.
+- `AuthBackendClient::buildUserData` parsuje pełny payload `/me`
+  (displayName, panelId, panelName, panelRoles, disabled).
+
 ## [0.1.3] - 2026-05-07
 
 ### Fixed
