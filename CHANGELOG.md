@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-07
+
+### Added
+
+- `cookie.domain` — opcjonalny atrybut Domain dla ciasteczek BEARER i
+  refresh_token. Domyślnie null (host-only). Ustaw np. `.example.com` żeby
+  ciasteczka działały dla wszystkich subdomen tej parent domain. Niezbędne
+  gdy front i backend są na różnych subdomenach (cross-subdomain) — bez
+  Domain browser traktuje cookie z backendu jako "innego origin" i nie
+  wysyła go z requestów frontu, mimo `SameSite=None; Secure`.
+
+  Przykład: front na `app.example.com`, backend na `api.example.com` →
+  ustaw `cookie.domain: .example.com` w consumer config, np. przez env
+  `AUTH_COOKIE_DOMAIN`.
+
+  Pusty string traktowany jak null (przydatne gdy env nie jest ustawione).
+
 ## [0.2.1] - 2026-05-07
 
 ### Fixed

@@ -12,6 +12,7 @@ services:
             $accessCookieName: '%auth_client.cookie.access_name%'
             $refreshCookieName: '%auth_client.cookie.refresh_name%'
             $cookiePath: '%auth_client.cookie.path%'
+            $cookieDomain: '%auth_client.cookie.domain%'
             $cookieSecure: '%auth_client.cookie.secure%'
             $cookieHttpOnly: '%auth_client.cookie.http_only%'
             $cookieSameSite: '%auth_client.cookie.same_site%'

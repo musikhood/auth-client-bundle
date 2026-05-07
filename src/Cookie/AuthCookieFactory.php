@@ -25,6 +25,7 @@ final readonly class AuthCookieFactory
         private string $accessCookieName,
         private string $refreshCookieName,
         private string $cookiePath,
+        private ?string $cookieDomain,
         private bool $cookieSecure,
         private bool $cookieHttpOnly,
         private string $cookieSameSite,
@@ -54,6 +55,7 @@ final readonly class AuthCookieFactory
         $response->headers->clearCookie(
             name: $this->accessCookieName,
             path: $this->cookiePath,
+            domain: $this->cookieDomain,
             secure: $this->cookieSecure,
             httpOnly: $this->cookieHttpOnly,
             sameSite: $sameSite,
@@ -61,6 +63,7 @@ final readonly class AuthCookieFactory
         $response->headers->clearCookie(
             name: $this->refreshCookieName,
             path: $this->cookiePath,
+            domain: $this->cookieDomain,
             secure: $this->cookieSecure,
             httpOnly: $this->cookieHttpOnly,
             sameSite: $sameSite,
@@ -84,7 +87,7 @@ final readonly class AuthCookieFactory
             value: $value,
             expire: $expiresAt,
             path: $this->cookiePath,
-            domain: null,
+            domain: $this->cookieDomain,
             secure: $this->cookieSecure,
             httpOnly: $this->cookieHttpOnly,
             raw: false,
