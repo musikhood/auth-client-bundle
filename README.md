@@ -389,7 +389,9 @@ auth_client:
         secure: '%env(bool:default::AUTH_COOKIE_SECURE)%'
         http_only: true
         same_site: lax           # lax | strict | none
-        lifetime: 2592000        # 30 dni — powinno odpowiadać TTL refresh_token w auth serverze
+        # TTL ciasteczek nie jest konfigurowalne — paczka zna typowe wartości
+        # auth servera (BEARER 15 min, refresh_token 30 dni). Jeśli auth server
+        # ma inne TTL, podbumpuj wersję paczki.
 
     circuit_breaker:
         failure_threshold: 3     # ile kolejnych błędów /me otwiera breaker

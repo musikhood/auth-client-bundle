@@ -18,9 +18,22 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Tokeny nigdy nie wychodzą poza ciasteczka. Front widzi tylko
  * `withCredentials`, nigdy samego JWT.
+ *
+ * TTL ciasteczek jest hardcoded w paczce, bo i tak ostatecznym źródłem prawdy
+ * jest auth server (`JWT_TTL` i `REFRESH_TOKEN_TTL` w jego env). Trzymamy je
+ * tu zsynchronizowane ze standardowym deploymentem auth servera, żeby browser
+ * nie musiał wozić martwych ciasteczek znacznie dłużej niż ich payload jest
+ * ważny. Jeśli auth server zmieni TTL — wartości tu trzeba podbumpować i
+ * wydać nową wersję paczki.
  */
 final readonly class AuthCookieFactory
 {
+    /** Czas życia ciasteczka BEARER (sekundy). Spójne z JWT_TTL na auth serverze. */
+    private const ACCESS_COOKIE_LIFETIME_SECONDS = 900;
+
+    /** Czas życia ciasteczka refresh_token (sekundy). Spójne z REFRESH_TOKEN_TTL na auth serverze. */
+    private const REFRESH_COOKIE_LIFETIME_SECONDS = 2592000;
+
     public function __construct(
         private string $accessCookieName,
         private string $refreshCookieName,
@@ -29,22 +42,21 @@ final readonly class AuthCookieFactory
         private bool $cookieSecure,
         private bool $cookieHttpOnly,
         private string $cookieSameSite,
-        private int $cookieLifetime,
     ) {}
 
     public function applyTokens(Response $response, TokenPair $tokens): void
     {
-        $expiresAt = time() + $this->cookieLifetime;
+        $now = time();
 
         $response->headers->setCookie($this->buildCookie(
             name: $this->accessCookieName,
             value: $tokens->accessToken,
-            expiresAt: $expiresAt,
+            expiresAt: $now + self::ACCESS_COOKIE_LIFETIME_SECONDS,
         ));
         $response->headers->setCookie($this->buildCookie(
             name: $this->refreshCookieName,
             value: $tokens->refreshToken,
-            expiresAt: $expiresAt,
+            expiresAt: $now + self::REFRESH_COOKIE_LIFETIME_SECONDS,
         ));
     }
 

@@ -16,7 +16,6 @@ services:
             $cookieSecure: '%auth_client.cookie.secure%'
             $cookieHttpOnly: '%auth_client.cookie.http_only%'
             $cookieSameSite: '%auth_client.cookie.same_site%'
-            $cookieLifetime: '%auth_client.cookie.lifetime%'
             $authHttpTimeout: '%auth_client.http.timeout%'
             $authHttpMaxDuration: '%auth_client.http.max_duration%'
             $validationCacheTtl: '%auth_client.validation_cache_ttl%'

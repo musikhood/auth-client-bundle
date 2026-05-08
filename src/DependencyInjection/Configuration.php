@@ -67,11 +67,9 @@ final class Configuration implements ConfigurationInterface
                             ->values(['lax', 'strict', 'none'])
                             ->defaultValue('lax')
                         ->end()
-                        ->integerNode('lifetime')
-                            ->defaultValue(2592000)
-                            ->min(1)
-                            ->info('Czas życia ciasteczek w sekundach. Powinien odpowiadać TTL refresh_token na auth serverze.')
-                        ->end()
+                        // TTL ciasteczek jest hardcoded w AuthCookieFactory (BEARER 15 min, refresh_token 30 dni)
+                        // i dopasowany do typowego deploymentu auth servera. Nie wystawiamy go jako konfigurowalny,
+                        // żeby uniknąć dryfu między paczką a auth serverem.
                     ->end()
                 ->end()
                 ->arrayNode('circuit_breaker')

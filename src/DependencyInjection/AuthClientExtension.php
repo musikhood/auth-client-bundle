@@ -38,7 +38,6 @@ final class AuthClientExtension extends Extension
         $container->setParameter('auth_client.cookie.secure', $config['cookie']['secure']);
         $container->setParameter('auth_client.cookie.http_only', $config['cookie']['http_only']);
         $container->setParameter('auth_client.cookie.same_site', $config['cookie']['same_site']);
-        $container->setParameter('auth_client.cookie.lifetime', $config['cookie']['lifetime']);
 
         $container->setParameter('auth_client.circuit_breaker.failure_threshold', $config['circuit_breaker']['failure_threshold']);
         $container->setParameter('auth_client.circuit_breaker.open_seconds', $config['circuit_breaker']['open_seconds']);
