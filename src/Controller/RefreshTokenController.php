@@ -51,7 +51,7 @@ class RefreshTokenController extends AbstractController
             $this->logger->warning('Refresh: auth server nie odpowiedział poprawnie', ['error' => $e->getMessage()]);
 
             return new JsonResponse(
-                ['error' => 'Authentication service unavailable'],
+                ['error' => 'Usługa uwierzytelniania niedostępna.'],
                 Response::HTTP_SERVICE_UNAVAILABLE,
             );
         }
@@ -64,7 +64,7 @@ class RefreshTokenController extends AbstractController
 
     private function unauthorized(): JsonResponse
     {
-        $response = new JsonResponse(['error' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        $response = new JsonResponse(['error' => 'Brak autoryzacji.'], Response::HTTP_UNAUTHORIZED);
         $this->cookieFactory->clear($response);
 
         return $response;

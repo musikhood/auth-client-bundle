@@ -46,17 +46,17 @@ class LoginController extends AbstractController
         $password = $this->stringField($payload, 'password');
 
         if (null === $email || null === $password) {
-            return new JsonResponse(['error' => 'Missing credentials'], Response::HTTP_BAD_REQUEST);
+            return new JsonResponse(['error' => 'Brak loginu lub hasła.'], Response::HTTP_BAD_REQUEST);
         }
 
         try {
             $tokens = $this->authBackendClient->login($email, $password);
         } catch (AuthBackendUnauthorizedException) {
-            return new JsonResponse(['error' => 'Invalid credentials'], Response::HTTP_UNAUTHORIZED);
+            return new JsonResponse(['error' => 'Nieprawidłowy login lub hasło.'], Response::HTTP_UNAUTHORIZED);
         } catch (AuthBackendException $e) {
             $this->logger->error('AuthBackend login failed', ['error' => $e->getMessage()]);
 
-            return new JsonResponse(['error' => 'Authentication service unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
+            return new JsonResponse(['error' => 'Usługa uwierzytelniania niedostępna.'], Response::HTTP_SERVICE_UNAVAILABLE);
         }
 
         try {
@@ -66,7 +66,7 @@ class LoginController extends AbstractController
             // lokalnie. Najczęściej źle ustawione AUTH_PANEL_ID lub AUTH_BASE_URL.
             $this->logger->critical('Login: auth server wystawił JWT, którego nie da się zweryfikować', ['error' => $e->getMessage()]);
 
-            return new JsonResponse(['error' => 'Authentication misconfigured'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return new JsonResponse(['error' => 'Błąd konfiguracji uwierzytelniania.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         $this->userMirrorSyncer->upsert($claims);

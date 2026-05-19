@@ -90,7 +90,7 @@ final readonly class AuthValidationListener
             // albo tokenVersion się nie zgadza. Odrzucamy żądanie. Interceptor
             // frontu wywoła /api/token/refresh, ten też zwróci 401, wyczyści
             // ciasteczka i dokończy wylogowanie.
-            throw new UnauthorizedHttpException('Bearer', 'Token no longer valid upstream');
+            throw new UnauthorizedHttpException('Bearer', 'Token nie jest już ważny na serwerze uwierzytelniania.');
         }
 
         // Auth server zwrócił 200 — to nasze źródło prawdy. Synchronizujemy
@@ -105,7 +105,7 @@ final readonly class AuthValidationListener
             // Konto zostało zablokowane na auth serverze, ale token jeszcze
             // ważny. Odrzucamy żądanie. Front interceptor zrobi refresh,
             // który auth server odrzuci 401 i wyczyści ciasteczka.
-            throw new UnauthorizedHttpException('Bearer', 'Account disabled upstream');
+            throw new UnauthorizedHttpException('Bearer', 'Konto zostało zablokowane.');
         }
 
         $this->markValidated($claims);

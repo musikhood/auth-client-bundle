@@ -111,7 +111,7 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
         //  1. LogoutController (użytkownik klika wyloguj)
         //  2. RefreshTokenController (refresh definitywnie zawiódł)
         return new JsonResponse(
-            ['error' => 'Unauthorized'],
+            ['error' => 'Brak autoryzacji.'],
             Response::HTTP_UNAUTHORIZED,
         );
     }
@@ -122,7 +122,7 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
         // 401, nie przekierowanie. Nie czyścimy tu ciasteczek. Użytkownik
         // może być po prostu anonimowy i nie podejmował próby logowania.
         return new JsonResponse(
-            ['error' => 'Unauthorized'],
+            ['error' => 'Brak autoryzacji.'],
             Response::HTTP_UNAUTHORIZED,
         );
     }

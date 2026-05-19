@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-19
+
+### Changed
+
+- Spolszczone wszystkie komunikaty błędów zwracane do frontendu (pole
+  `error` w response JSON). Wcześniej user widział w panelach np.
+  "Unauthorized", "Invalid credentials" — teraz wraca polski tekst.
+
+  Zmienione komunikaty:
+  - `LoginController`: "Missing credentials" → "Brak loginu lub hasła.",
+    "Invalid credentials" → "Nieprawidłowy login lub hasło.",
+    "Authentication service unavailable" → "Usługa uwierzytelniania niedostępna.",
+    "Authentication misconfigured" → "Błąd konfiguracji uwierzytelniania."
+  - `RefreshTokenController`: "Unauthorized" → "Brak autoryzacji.",
+    "Authentication service unavailable" → "Usługa uwierzytelniania niedostępna."
+  - `JwtCookieAuthenticator` (start + onAuthenticationFailure):
+    "Unauthorized" → "Brak autoryzacji."
+  - `AuthValidationListener` (UnauthorizedHttpException reason):
+    "Token no longer valid upstream" → "Token nie jest już ważny na serwerze uwierzytelniania.",
+    "Account disabled upstream" → "Konto zostało zablokowane."
+
+  Struktura response (klucze JSON, kody statusów) bez zmian.
+
 ## [0.2.2] - 2026-05-07
 
 ### Added
