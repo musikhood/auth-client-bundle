@@ -7,6 +7,7 @@ namespace Musikhood\AuthClient\Http;
 use Musikhood\AuthClient\Dto\TokenPair;
 use Musikhood\AuthClient\Dto\UserData;
 use Musikhood\AuthClient\Exception\AuthBackendException;
+use Musikhood\AuthClient\Exception\AuthBackendForbiddenException;
 use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;
@@ -138,6 +139,20 @@ final readonly class AuthBackendClient
             throw new AuthBackendUnauthorizedException("auth server zwrócił 401 dla {$method} {$path}");
         }
 
+        if (403 === $status) {
+            // 403 z auth servera niesie informację, dlaczego user nie wszedł
+            // (brak dostępu do panelu, konto disabled). Tekst z `error` w body
+            // wystawiamy w exception.message, żeby LoginController mógł go
+            // przekazać do frontu.
+            $reason = $this->extractErrorMessage($response) ?? 'Brak dostępu.';
+            $this->logger->info('AuthBackend: 403 z auth servera', [
+                'method' => $method,
+                'path' => $path,
+                'reason' => $reason,
+            ]);
+            throw new AuthBackendForbiddenException($reason);
+        }
+
         if ($status >= 400) {
             $body = $this->safeBody($response);
             $this->logger->warning('AuthBackend: odpowiedź spoza 2xx', [
@@ -157,6 +172,20 @@ final readonly class AuthBackendClient
         }
 
         return $decoded;
+    }
+
+    private function extractErrorMessage(\Symfony\Contracts\HttpClient\ResponseInterface $response): ?string
+    {
+        try {
+            /** @var array<string, mixed> $decoded */
+            $decoded = $response->toArray(false);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $error = $decoded['error'] ?? null;
+
+        return is_string($error) && '' !== $error ? $error : null;
     }
 
     private function safeBody(\Symfony\Contracts\HttpClient\ResponseInterface $response): string

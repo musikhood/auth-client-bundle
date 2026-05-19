@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-05-19
+
+### Fixed
+
+- 403 z auth servera (brak dostępu do panelu, konto disabled) zwracało
+  do frontu 503 "Usługa uwierzytelniania niedostępna" — myląca informacja,
+  bo usługa działała poprawnie i to user nie miał uprawnień.
+
+  Teraz `LoginController` zwraca 403 z oryginalnym komunikatem z auth
+  servera (np. "Użytkownik … nie ma dostępu do panelu …" albo
+  "Konto jest zablokowane."). Pozwala konsumentowi pokazać użytkownikowi
+  prawdziwy powód odmowy.
+
+### Added
+
+- `AuthBackendForbiddenException` — nowy typ wyjątku dla 403 z auth
+  servera. Niesie tekst z pola `error` w body odpowiedzi w `message`.
+  Konsument może go łapać osobno od ogólnego `AuthBackendException`.
+- `AuthBackendClient::extractErrorMessage()` — wewnętrzny helper
+  parsujący `error` z JSON body.
+
 ## [0.2.4] - 2026-05-19
 
 ### Changed

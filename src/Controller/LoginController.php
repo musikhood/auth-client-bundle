@@ -6,6 +6,7 @@ namespace Musikhood\AuthClient\Controller;
 
 use Musikhood\AuthClient\Cookie\AuthCookieFactory;
 use Musikhood\AuthClient\Exception\AuthBackendException;
+use Musikhood\AuthClient\Exception\AuthBackendForbiddenException;
 use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Musikhood\AuthClient\Exception\InvalidJwtException;
 use Musikhood\AuthClient\Http\AuthBackendClient;
@@ -53,6 +54,12 @@ class LoginController extends AbstractController
             $tokens = $this->authBackendClient->login($email, $password);
         } catch (AuthBackendUnauthorizedException) {
             return new JsonResponse(['error' => 'Nieprawidłowy login lub hasło.'], Response::HTTP_UNAUTHORIZED);
+        } catch (AuthBackendForbiddenException $e) {
+            // 403 z auth servera — kredensje OK, ale brak dostępu do panelu lub
+            // konto disabled. Tekst z auth servera niesie konkretną przyczynę,
+            // propagujemy go bez zmian, żeby user widział "nie masz dostępu" a
+            // nie "usługa niedostępna".
+            return new JsonResponse(['error' => $e->getMessage()], Response::HTTP_FORBIDDEN);
         } catch (AuthBackendException $e) {
             $this->logger->error('AuthBackend login failed', ['error' => $e->getMessage()]);
 
