@@ -11,6 +11,7 @@ use Musikhood\AuthClient\Security\JwtCookieAuthenticator;
 use Musikhood\AuthClient\Security\UserMirrorSyncer;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
+use Ramsey\Uuid\UuidInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
@@ -110,6 +111,17 @@ final readonly class AuthValidationListener
 
         $this->markValidated($claims);
         $this->resetFailures();
+    }
+
+    /**
+     * Wymusza ponowną walidację usera przy najbliższym requeście (kasuje wpis
+     * `auth_client_validated_<userId>`). Wołane przez webhook 0s revocation —
+     * listener jest właścicielem tego klucza cache, więc inwalidacja idzie przez
+     * niego, a nie przez ręczne składanie klucza po stronie controllera.
+     */
+    public function invalidateValidatedCache(UuidInterface $userId): void
+    {
+        $this->cache->deleteItem(self::CACHE_KEY_VALIDATED . $userId->toString());
     }
 
     private function isCacheFresh(JwtClaims $claims): bool

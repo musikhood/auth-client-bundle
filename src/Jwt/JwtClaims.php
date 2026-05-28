@@ -18,6 +18,10 @@ final readonly class JwtClaims
 {
     /**
      * @param list<string> $panelRoles nazwy ról bez prefiksu ROLE_
+     * @param int|null     $tokenVersion claim `ver` — null dla starych tokenów
+     *                     wystawionych zanim auth server wdrożył Phase 1
+     *                     (kompatybilność wsteczna, wygasną w ciągu TTL access
+     *                     tokena, typowo ~15 min)
      */
     public function __construct(
         public UuidInterface $userId,
@@ -28,5 +32,6 @@ final readonly class JwtClaims
         public array $panelRoles,
         public \DateTimeImmutable $issuedAt,
         public \DateTimeImmutable $expiresAt,
+        public ?int $tokenVersion = null,
     ) {}
 }

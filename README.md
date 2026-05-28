@@ -294,6 +294,9 @@ security:
 
     access_control:
         - { path: ^/api/(login|logout|token/(refresh|invalidate)), roles: PUBLIC_ACCESS }
+        # Webhook inwalidacji usera (0s revocation) — własna autoryzacja przez
+        # podpis JWT auth servera, NIE user auth. MUSI być przed catch-all ^/api.
+        - { path: ^/api/auth-client/webhook/, roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
     # Opcjonalnie: zdefiniuj hierarchię ról. Paczka nie narzuca żadnych
@@ -353,6 +356,45 @@ Lokalne pole `disabled` w encji konsumenta służy tylko do wyświetlenia
 (np. w panelu zarządzania userami w mikroserwisie). Aktualizowane
 automatycznie przez `syncFromMe()`.
 
+## Webhook inwalidacji (0s revocation)
+
+Od wersji `0.3.0` paczka nasłuchuje webhooków od auth servera i skraca czas
+rewokacji sesji z ~30s (poll `/me` opisany wyżej) do setek milisekund.
+
+**Jak to działa.** Po inwalidacji usera (zablokowanie konta, zmiana hasła,
+odebranie dostępu do panelu) auth server podbija `tokenVersion` i pushuje
+podpisany webhook na endpoint paczki
+`POST /api/auth-client/webhook/user-invalidated`. Paczka weryfikuje podpis
+(`WebhookJwtValidator`, ten sam JWKS co user JWT), zapisuje nową `tokenVersion`
+w cache (`UserTokenVersionStore`) i kasuje cache walidacji usera. Przy
+najbliższym requeście tego usera `JwtCookieAuthenticator` porównuje `ver`
+z jego JWT z zapisaną wartością i odrzuca stary token (401) bez czekania na
+poll `/me`.
+
+**Co musisz zrobić.**
+
+1. Dodaj `PUBLIC_ACCESS` dla ścieżki webhooka w `security.yaml` (patrz krok
+   „Skonfiguruj security" powyżej). Webhook autoryzuje się sam podpisem JWT
+   auth servera — to model jak weryfikacja podpisu webhooków Stripe/GitHub,
+   nie dziura w security.
+2. W panelu admin auth servera ustaw pole „Webhook URL" dla swojego panelu na
+   bazowy URL backendu mikroserwisu (np. `https://pim.vitkac.com`). Auth server
+   sam dokleja ścieżkę `/api/auth-client/webhook/user-invalidated`.
+3. Upewnij się, że `cache.app` jest skonfigurowane (Redis zalecany — stan musi
+   być współdzielony między procesami workerów i przeżyć restart).
+
+**Nie musisz nic zmieniać w swojej encji.** `tokenVersion` żyje w cache PSR,
+nie w kolumnie DB — webhook może przyjść nawet dla usera, którego mikroserwis
+jeszcze nie zna lokalnie. Reset cache (flush Redisa) jest nieszkodliwy: brak
+wpisu = pass, a poll `/me` dogoni inwalidację w ~30s (fallback).
+
+**Monolog tip.** Jeśli używasz `fingers_crossed` z `action_level: error`
+(typowy prod default Symfony), logi `webhook.received` (poziom `info`) będą
+buforowane i tracone, gdy webhook kończy się 200 OK — bufor jest zrzucany
+tylko gdy w tym samym requeście wystąpi `error`. Żeby widzieć je w
+`kubectl logs`, dodaj osobny handler/channel ze `stream` do `php://stderr`
+na poziomie `info`.
+
 ## Kontrakt z front-endem
 
 Front nigdy nie widzi JWT. Wymaga trzech rzeczy:
@@ -410,6 +452,7 @@ auth_client:
 | `POST` | `/api/logout` (alias `/api/token/invalidate`) | Czyści ciasteczka, unieważnia refresh token w auth serverze. |
 | `POST` | `/api/token/refresh` | Generuje nową parę ciasteczek z refresh tokena. |
 | `GET` | `/api/v1/user/me` | Zwraca dane zalogowanego użytkownika (`id`, `email`, `displayName`, `roles`, `disabled`). Czyta z lokalnej kopii — nie wymaga round-tripa do auth servera. |
+| `POST` | `/api/auth-client/webhook/user-invalidated` | Webhook inwalidacji usera (0s revocation). Autoryzacja podpisem JWT auth servera (nie user auth — wymaga `PUBLIC_ACCESS` w `access_control`). Patrz „Webhook inwalidacji". |
 
 ## Licencja
 

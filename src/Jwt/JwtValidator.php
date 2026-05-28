@@ -135,6 +135,14 @@ final class JwtValidator
             ? array_values(array_filter($panelRolesRaw, 'is_string'))
             : [];
 
+        // `ver` opcjonalny: stare tokeny (przed Phase 1 auth servera) go nie
+        // mają — wtedy null i JwtCookieAuthenticator pomija sprawdzenie wersji
+        // (inwalidację dogoni /me poll).
+        $tokenVersion = $claims['ver'] ?? null;
+        if (null !== $tokenVersion && !is_int($tokenVersion)) {
+            throw new InvalidJwtException('Claim ver musi być int');
+        }
+
         return new JwtClaims(
             userId: $userId,
             email: $email,
@@ -144,6 +152,7 @@ final class JwtValidator
             panelRoles: $panelRoles,
             issuedAt: (new \DateTimeImmutable())->setTimestamp($iat),
             expiresAt: (new \DateTimeImmutable())->setTimestamp($exp),
+            tokenVersion: $tokenVersion,
         );
     }
 

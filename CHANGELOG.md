@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-28
+
+### Added
+
+- Webhook endpoint `POST /api/auth-client/webhook/user-invalidated` — 0s
+  revocation. Auth server pushuje inwalidację usera (disable / password change /
+  panel removal) zamiast czekać, aż konsument dogoni zmianę przez `/me` poll
+  (~30s). Latency spada do setek ms.
+- `WebhookJwtValidator` + `WebhookClaims` — verify-only walidacja webhook JWT
+  (RS256, reuse `JwksProvider` z user JWT). `aud` musi dokładnie odpowiadać
+  `panel_id` konsumenta; webhook do innego panelu / mirror jest odrzucony.
+- `UserTokenVersionStore` — cache PSR (TTL 30d) trzymający ostatnią znaną
+  `tokenVersion` per user, zasilany webhookiem.
+- `JwtClaims::tokenVersion` (`?int`) — claim `ver` z user JWT; `null` dla starych
+  tokenów wystawionych zanim auth server wdrożył versioning.
+- `AuthValidationListener::invalidateValidatedCache()` — publiczna metoda
+  resetująca cache walidacji usera (wołana przez webhook).
+
+### Changed
+
+- `JwtCookieAuthenticator` sprawdza claim `ver` przeciw `UserTokenVersionStore`.
+  Null-safe: brak `ver` w tokenie lub brak wpisu w store = pass (no-op, `/me`
+  poll dogoni inwalidację). Mismatch = 401 natychmiast.
+
+### Migration guide
+
+1. `composer update musikhood/auth-client-bundle`.
+2. Dodaj do `config/packages/security.yaml` regułę **PRZED** catch-all `^/api`:
+
+   ```yaml
+   access_control:
+       - { path: ^/api/auth-client/webhook/, roles: PUBLIC_ACCESS }
+   ```
+
+   Webhook ma własną autoryzację kryptograficzną (podpis JWT auth servera) —
+   model jak weryfikacja podpisu webhooków Stripe/GitHub, NIE dziura w security.
+   `JwtCookieAuthenticator` paczki działa w trybie lazy (`supports()` zwraca
+   `null`), więc `PUBLIC_ACCESS` wystarcza — Symfony pomija wtedy authenticator
+   dla tej ścieżki (osobny firewall nie jest potrzebny).
+3. W panelu admin auth servera ustaw pole „Webhook URL" dla swojego panelu na
+   bazowy URL swojego backendu (np. `https://pim.vitkac.com`). Auth server
+   dokleja ścieżkę `/api/auth-client/webhook/user-invalidated`.
+4. Upewnij się, że `cache.app` jest skonfigurowane (Redis zalecany — współdzieli
+   stan między procesami i przeżywa restart).
+5. Monolog tip: jeśli używasz `fingers_crossed` z `action_level: error` (typowy
+   prod default), logi `webhook.received` (info) będą buforowane i tracone, gdy
+   webhook kończy się 200 OK. Żeby je widzieć, dodaj osobny handler/channel ze
+   `stream` do `php://stderr` na poziomie `info`.
+
 ## [0.2.5] - 2026-05-19
 
 ### Fixed

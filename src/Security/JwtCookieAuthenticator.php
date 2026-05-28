@@ -47,6 +47,7 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
         private readonly JwtValidator $jwtValidator,
         private readonly UserMirrorSyncer $userMirrorSyncer,
         private readonly AuthCookieFactory $cookieFactory,
+        private readonly UserTokenVersionStore $tokenVersionStore,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -74,6 +75,27 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
                 'Walidacja JWT nieudana: ' . $e->getMessage(),
                 previous: $e,
             );
+        }
+
+        // 0s revocation: webhook od auth servera zapisał najnowszą tokenVersion
+        // w store. Jeśli `ver` z JWT jej nie odpowiada — sesja unieważniona,
+        // odrzucamy bez czekania na /me poll. Null-safe by design:
+        //   - claims->tokenVersion === null → stary token (przed Phase 1) → pass
+        //   - stored === null → webhook nie doszedł / cache flush / TTL → pass (/me dogoni)
+        //   - mismatch → 401
+        $storedVersion = $this->tokenVersionStore->get($claims->userId);
+        if (
+            null !== $claims->tokenVersion
+            && null !== $storedVersion
+            && $claims->tokenVersion !== $storedVersion
+        ) {
+            $this->logger->warning('auth_client_jwt_version_mismatch', [
+                'user_id' => $claims->userId->toString(),
+                'claim_ver' => $claims->tokenVersion,
+                'stored_ver' => $storedVersion,
+            ]);
+
+            throw new CustomUserMessageAuthenticationException('Token został unieważniony.');
         }
 
         $this->stashContext($request, $accessToken, $claims);
