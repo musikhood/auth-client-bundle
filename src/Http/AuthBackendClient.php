@@ -112,6 +112,31 @@ final readonly class AuthBackendClient
     }
 
     /**
+     * Introspekcja per-user-per-panel API tokenu na auth serverze
+     * (POST /api/auth/backend/api-token/verify, HTTP Basic + nagłówek X-Api-Token).
+     * Null = auth server odpowiedział 401 (token nieważny, obcy panel, user
+     * disabled lub złe creds). Inne błędy rzucają {@see AuthBackendException} —
+     * wywołujący (authenticator) robi fail-closed.
+     */
+    public function introspectApiToken(string $rawToken): ?UserData
+    {
+        try {
+            $payload = $this->request(
+                'POST',
+                '/api/auth/backend/api-token/verify',
+                options: [
+                    'auth_basic' => [$this->authClientId, $this->authClientSecret],
+                    'headers' => ['X-Api-Token' => $rawToken],
+                ],
+            );
+        } catch (AuthBackendUnauthorizedException) {
+            return null;
+        }
+
+        return $this->buildUserData($payload);
+    }
+
+    /**
      * @param array<string, mixed> $options
      * @return array<string, mixed>
      */

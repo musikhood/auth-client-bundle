@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Security\ApiTokenAuthenticator` — drugi sposób autoryzacji obok JWT-cookie:
+  per-user-per-panel API token w nagłówku `X-Api-Token`. Klient maszynowy łączy
+  się bez logowania, ciasteczek ani refreshu. `supports()` = true tylko gdy
+  nagłówek obecny, więc współistnieje z `JwtCookieAuthenticator` (brak kolizji;
+  bez nagłówka stary cookie flow bez zmian). Weryfikacja live przez introspekcję
+  na auth serverze → rewokacja natychmiastowa. Fail-closed gdy auth server
+  niedostępny. Asercja `panelId` z introspekcji == skonfigurowany `panel_id`.
+- `AuthBackendClient::introspectApiToken()` — `POST /api/auth/backend/api-token/verify`
+  (HTTP Basic client creds + nagłówek `X-Api-Token`). 401 → `null`, 5xx/transport
+  → `AuthBackendException`.
+- Konfiguracja `auth_client.api_token` (`enabled` default true, `header` default
+  `X-Api-Token`, `cache_ttl` default 0 = bez cache → natychmiastowa rewokacja).
+- `phpstan.neon.dist` — config dla statycznej analizy (level 8 + phpstan-symfony).
+
 ## [0.3.0] - 2026-05-28
 
 ### Added

@@ -1,0 +1,16 @@
+includes:
+    - vendor/phpstan/phpstan-symfony/extension.neon
+    - vendor/phpstan/phpstan-symfony/rules.neon
+
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    ignoreErrors:
+        # phpstan-symfony types TreeBuilder::getRootNode() as NodeDefinition,
+        # but the Config component returns ArrayNodeDefinition at runtime; the
+        # children()/scalarNode() fluent chain is correct despite the warning.
+        -
+            message: '#Call to method (scalarNode|arrayNode|integerNode|booleanNode|enumNode|floatNode|end|children|defaultValue|info|cannotBeEmpty|isRequired|min|defaultTrue|defaultNull|values|addDefaultsIfNotSet)\(\) on an unknown class Symfony\\Component\\Config\\Definition\\Builder\\NodeBuilder#'
+            path: src/DependencyInjection/Configuration.php

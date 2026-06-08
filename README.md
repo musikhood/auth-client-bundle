@@ -289,6 +289,10 @@ security:
             pattern: ^/api
             stateless: true
             custom_authenticators:
+                # Opcjonalnie: API token (X-Api-Token) dla klientów maszynowych.
+                # MUSI być przed JwtCookieAuthenticator — jego supports() reaguje
+                # tylko na obecność nagłówka, a JwtCookie próbuje zawsze.
+                - Musikhood\AuthClient\Security\ApiTokenAuthenticator
                 - Musikhood\AuthClient\Security\JwtCookieAuthenticator
             entry_point: Musikhood\AuthClient\Security\JwtCookieAuthenticator
 
@@ -442,7 +446,37 @@ auth_client:
     http:
         timeout: 5.0
         max_duration: 10.0
+
+    api_token:
+        enabled: true            # czy ApiTokenAuthenticator jest aktywny
+        header: X-Api-Token      # nagłówek niosący raw token
+        cache_ttl: 0             # 0 = bez cache → natychmiastowa rewokacja
 ```
+
+## API token (autoryzacja maszynowa)
+
+Drugi sposób autoryzacji obok ciasteczek — dla klientów server-to-server, które
+nie mają sesji przeglądarkowej. Klient wysyła per-user-per-panel token w
+nagłówku `X-Api-Token` (format `mhpat_…`), bez logowania, ciasteczek ani
+refreshu.
+
+```
+GET /api/v1/products
+X-Api-Token: mhpat_AbCd…
+```
+
+`ApiTokenAuthenticator` reaguje tylko gdy nagłówek jest obecny, więc współistnieje
+z `JwtCookieAuthenticator` w tym samym firewallu — bez nagłówka stary cookie flow
+działa bez zmian. Token jest weryfikowany live przez introspekcję na auth serverze
+(`POST /api/auth/backend/api-token/verify`) — paczka nie trzyma kopii, więc revoke
+po stronie auth servera = natychmiastowa rewokacja (następny request → 401). Gdy
+auth server jest niedostępny, authenticator robi **fail-closed** (401).
+
+Role pochodzą z `panelRoles` introspekcji (z prefiksem `ROLE_`), tak samo jak przy
+JWT — istniejące `#[IsGranted('ROLE_PUBLISH')]` działają bez zmian. Token jest
+generowany / regenerowany / usuwany wyłącznie przez admina w panelu auth servera
+(„niezmienny" = brak edycji wartości; zmiana = regeneracja, stary natychmiast
+martwy).
 
 ## Endpointy wystawiane przez paczkę
 

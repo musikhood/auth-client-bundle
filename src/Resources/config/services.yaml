@@ -21,6 +21,7 @@ services:
             $validationCacheTtl: '%auth_client.validation_cache_ttl%'
             $circuitBreakerFailureThreshold: '%auth_client.circuit_breaker.failure_threshold%'
             $circuitBreakerOpenSeconds: '%auth_client.circuit_breaker.open_seconds%'
+            $apiTokenHeader: '%auth_client.api_token.header%'
 
     Musikhood\AuthClient\:
         resource: '../../*'

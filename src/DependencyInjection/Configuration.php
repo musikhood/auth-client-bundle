@@ -16,7 +16,9 @@ final class Configuration implements ConfigurationInterface
     public function getConfigTreeBuilder(): TreeBuilder
     {
         $treeBuilder = new TreeBuilder('auth_client');
-        /** @phpstan-ignore-next-line — getRootNode() returns NodeDefinition&ParentNodeDefinitionInterface at runtime */
+        // getRootNode() is statically typed as NodeDefinition, but at runtime is
+        // ArrayNodeDefinition exposing children()/scalarNode(). The fluent chain
+        // below trips phpstan-symfony's NodeBuilder generics — ignored in phpstan.neon.dist.
         $rootNode = $treeBuilder->getRootNode();
 
         $rootNode
@@ -70,6 +72,26 @@ final class Configuration implements ConfigurationInterface
                         // TTL ciasteczek jest hardcoded w AuthCookieFactory (BEARER 15 min, refresh_token 30 dni)
                         // i dopasowany do typowego deploymentu auth servera. Nie wystawiamy go jako konfigurowalny,
                         // żeby uniknąć dryfu między paczką a auth serverem.
+                    ->end()
+                ->end()
+                ->arrayNode('api_token')
+                    ->addDefaultsIfNotSet()
+                    ->info('Per-user-per-panel API token (drugi sposób autoryzacji obok JWT-cookie).')
+                    ->children()
+                        ->booleanNode('enabled')
+                            ->defaultTrue()
+                            ->info('Czy ApiTokenAuthenticator jest aktywny. Sam authenticator i tak reaguje tylko gdy nagłówek jest obecny.')
+                        ->end()
+                        ->scalarNode('header')
+                            ->defaultValue('X-Api-Token')
+                            ->cannotBeEmpty()
+                            ->info('Nazwa nagłówka niosącego raw token.')
+                        ->end()
+                        ->integerNode('cache_ttl')
+                            ->defaultValue(0)
+                            ->min(0)
+                            ->info('TTL cache wyniku introspekcji tokenu (sekundy). Default 0 = bez cache → natychmiastowa rewokacja.')
+                        ->end()
                     ->end()
                 ->end()
                 ->arrayNode('circuit_breaker')
