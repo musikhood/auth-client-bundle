@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-06-09
+
+### Fixed
+
+- `JwtCookieAuthenticator::supports()` zwraca teraz `false`, gdy żądanie niesie
+  nagłówek API tokenu (`X-Api-Token`) — ustępuje `ApiTokenAuthenticatorowi`.
+  Wcześniej `supports()` był `null` (zawsze próbuj), więc po udanej autoryzacji
+  API tokenem Symfony odpalał kolejny wspierający authenticator (JwtCookie),
+  ten padał na „Brak ciasteczka BEARER" i nadpisywał sukces odpowiedzią 401.
+  Efekt: 401 mimo ważnego API tokenu. Cookie flow bez nagłówka — bez zmian.
+- Wstrzyknięto `$apiTokenHeader` (bind `%auth_client.api_token.header%`) do
+  konstruktora `JwtCookieAuthenticator`.
+
 ### Added
 
 - `Security\ApiTokenAuthenticator` — drugi sposób autoryzacji obok JWT-cookie:

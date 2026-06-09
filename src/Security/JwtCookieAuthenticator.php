@@ -49,12 +49,22 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
         private readonly AuthCookieFactory $cookieFactory,
         private readonly UserTokenVersionStore $tokenVersionStore,
         private readonly LoggerInterface $logger,
+        private readonly string $apiTokenHeader,
     ) {}
 
     public function supports(Request $request): ?bool
     {
-        // Zawsze próbujemy uwierzytelnić. Chcemy 401 na chronionych trasach
-        // gdy nie ma ciasteczka, zamiast trybu anonimowego z mylącym 403.
+        // When the request carries an API token, ApiTokenAuthenticator handles
+        // it. Otherwise this authenticator (supports()=null = always) would
+        // fire AFTER ApiToken succeeds and override it with a 401
+        // "Brak ciasteczka BEARER".
+        if ($request->headers->has($this->apiTokenHeader)) {
+            return false;
+        }
+
+        // Otherwise always try to authenticate. We want a 401 on protected
+        // routes when the cookie is missing, instead of anonymous mode with a
+        // misleading 403.
         return null;
     }
 

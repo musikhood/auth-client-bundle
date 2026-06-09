@@ -290,8 +290,11 @@ security:
             stateless: true
             custom_authenticators:
                 # Opcjonalnie: API token (X-Api-Token) dla klientów maszynowych.
-                # MUSI być przed JwtCookieAuthenticator — jego supports() reaguje
-                # tylko na obecność nagłówka, a JwtCookie próbuje zawsze.
+                # Oba authenticatory wykluczają się przez supports(): gdy nagłówek
+                # X-Api-Token jest obecny — działa tylko ApiTokenAuthenticator,
+                # gdy go nie ma — tylko JwtCookieAuthenticator. Kolejność nie jest
+                # już krytyczna (do v0.3.1 JwtCookie próbował zawsze i po sukcesie
+                # ApiToken nadpisywał go 401 „Brak ciasteczka BEARER").
                 - Musikhood\AuthClient\Security\ApiTokenAuthenticator
                 - Musikhood\AuthClient\Security\JwtCookieAuthenticator
             entry_point: Musikhood\AuthClient\Security\JwtCookieAuthenticator
