@@ -112,6 +112,34 @@ final readonly class AuthBackendClient
     }
 
     /**
+     * Backendowa introspekcja JWT (ścieżka cookie/SSO) na auth serverze
+     * (POST /api/auth/backend/introspect, HTTP Basic + token w body). Panel
+     * ustala auth server z poświadczeń klienta (NIE z Origin — wołamy s2s).
+     *
+     * W ODRÓŻNIENIU od {@see self::getCurrentUser()}: NIE połykamy 403.
+     *   - 200            → {@see UserData} (user ma dostęp do panelu klienta),
+     *   - 401            → {@see AuthBackendUnauthorizedException} (sesja martwa:
+     *                      token nieważny/wygasły, iss/ver, konto disabled),
+     *   - 403            → {@see AuthBackendForbiddenException} (sesja żyje, brak
+     *                      dostępu do panelu — wołający mapuje na 403 do frontu,
+     *                      BEZ czyszczenia cookies / refreshu),
+     *   - 5xx/transport  → {@see AuthBackendException} (fail-open u wołającego).
+     */
+    public function introspectJwt(string $accessToken): UserData
+    {
+        $payload = $this->request(
+            'POST',
+            '/api/auth/backend/introspect',
+            options: [
+                'auth_basic' => [$this->authClientId, $this->authClientSecret],
+                'json' => ['token' => $accessToken],
+            ],
+        );
+
+        return $this->buildUserData($payload);
+    }
+
+    /**
      * Introspekcja per-user-per-panel API tokenu na auth serverze
      * (POST /api/auth/backend/api-token/verify, HTTP Basic + nagłówek X-Api-Token).
      * Null = auth server odpowiedział 401 (token nieważny, obcy panel, user

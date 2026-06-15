@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0]
+
+Panel-agnostyczne SSO cross-panel. Te same ciasteczka (BEARER + refresh_token)
+są ważne na KAŻDYM panelu w domenie; o dostępie do konkretnego panelu rozstrzyga
+backendowa introspekcja, a nie claim `aud` w tokenie.
+
+### Changed (kontrakt 401 vs 403)
+
+- **`JwtValidator`: ZDJĘTA twarda bramka `aud`.** Token nie jest już odrzucany,
+  gdy `aud`/`panel_id` wskazuje inny panel — walidujemy podpis (JWKS), `iss`,
+  `exp`. Claimy `aud`/`panel_id` zostają informacyjne. Usunięto zależność
+  `$authPanelId` z `JwtValidator` (API-token flow w `ApiTokenAuthenticator`
+  NADAL bramkuje po panelu — to osobny mechanizm, bez zmian).
+- **`JwtClaims::$panelId` jest teraz `?string`** (opcjonalny) — token panel-agnostyczny.
+- **`AuthValidationListener`: introspekcja zamiast `/me`.** Per-request walidacja
+  woła nowy `POST /api/auth/backend/introspect` (HTTP Basic — panel ustala auth
+  server z poświadczeń klienta, NIE z Origin; s2s nie wysyła Origin). Mapowanie:
+  - **403** (brak dostępu do panelu, sesja ŻYJE) → `AccessDeniedHttpException`
+    → 403 do frontu. Front (paczka JS) klasyfikuje jako `PanelAccessDeniedError`:
+    BEZ refreshu, BEZ czyszczenia ciasteczek, BEZ broadcastu — sesja na innych
+    panelach żyje.
+  - **401** (sesja martwa: token nieważny/wygasły, iss/ver, konto disabled) →
+    `UnauthorizedHttpException` → front robi refresh; jeśli i to padnie, czyszczenie.
+  - **5xx/transport** → fail OPEN + circuit breaker (NIE wylogowujemy przy awarii mastera).
+- **`RefreshTokenController`: 403 NIGDY nie czyści ciasteczek.** Mapowanie:
+  403 → 403 bez `clear()`; 401 → 401 + `clear()` (jedyny przypadek czyszczenia);
+  5xx → 503 bez `clear()`.
+
+### Added
+
+- `AuthBackendClient::introspectJwt()` — introspekcja JWT przez
+  `POST /api/auth/backend/introspect`. W ODRÓŻNIENIU od `getCurrentUser()` NIE
+  połyka 403: 401 → `AuthBackendUnauthorizedException`, 403 →
+  `AuthBackendForbiddenException` (z komunikatem z body), 5xx/transport →
+  `AuthBackendException`.
+
 ## [0.3.2] - 2026-06-09
 
 ### Fixed

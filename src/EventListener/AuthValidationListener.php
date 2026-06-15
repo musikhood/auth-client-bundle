@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Musikhood\AuthClient\EventListener;
 
 use Musikhood\AuthClient\Exception\AuthBackendException;
+use Musikhood\AuthClient\Exception\AuthBackendForbiddenException;
+use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Musikhood\AuthClient\Http\AuthBackendClient;
 use Musikhood\AuthClient\Jwt\JwtClaims;
 use Musikhood\AuthClient\Security\JwtCookieAuthenticator;
@@ -15,22 +17,30 @@ use Ramsey\Uuid\UuidInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
- * Sprawdza w auth serverze przy każdym żądaniu, czy użytkownik nadal jest
- * aktywny (nie zablokowany, tokenVersion się zgadza). Wynik cache'ujemy przez
- * `validationCacheTtl` sekund (domyślnie 30s), żeby jeden user spamujący API
- * nie obciążał auth servera.
+ * Sprawdza w auth serverze przy każdym żądaniu, czy użytkownik ma dostęp do
+ * TEGO panelu i czy sesja jest wciąż ważna. Robi to przez backendową
+ * introspekcję (POST /api/auth/backend/introspect) — panel ustala auth server
+ * z poświadczeń klienta (NIE z Origin: wołamy server-to-server bez Origin, więc
+ * bramka po /me + Origin nigdy by nie zwróciła 403). Wynik cache'ujemy przez
+ * `validationCacheTtl` sekund (domyślnie 30s).
  *
- * Obsługa błędów:
- *   1. 401 z /me: odrzucamy żądanie (fail closed). Interceptor na froncie
- *      wywoła wtedy /api/token/refresh. Jeśli to też się nie uda, front
- *      czyści ciasteczka i wylogowuje.
- *   2. Timeout albo 5xx: fail open + log. Po N błędach z rzędu otwieramy
- *      circuit breaker na `cb_open_seconds` sekund i nie wołamy /me wcale.
- *      Udane wywołanie resetuje licznik.
+ * Obsługa odpowiedzi:
+ *   1. 200: user ma dostęp → sync lokalnej kopii + cache OK.
+ *   2. 401 (sesja martwa: token nieważny/wygasły, iss/ver, konto disabled):
+ *      odrzucamy 401. Interceptor frontu wywoła /api/token/refresh; jeśli i to
+ *      się nie uda, ciasteczka są czyszczone i sesja kończona.
+ *   3. 403 (brak dostępu do panelu, sesja ŻYJE): odrzucamy 403 przez
+ *      AccessDeniedHttpException. Front (paczka JS) klasyfikuje to jako
+ *      PanelAccessDeniedError — BEZ refreshu, BEZ czyszczenia ciasteczek, BEZ
+ *      broadcastu. Sesja na innych panelach zostaje nienaruszona.
+ *   4. Timeout/5xx/transport: fail OPEN + log (NIE wylogowujemy przy awarii
+ *      mastera). Po N błędach z rzędu otwieramy circuit breaker na
+ *      `cb_open_seconds` i nie wołamy introspekcji wcale. Udane wywołanie resetuje.
  *
  * Klucze cache i breakera żyją w `cache.app` (PSR-6). Ewentualne wyrzucenie
  * z cache jest nieszkodliwe, oba klucze są krótkotrwałe.
@@ -78,20 +88,26 @@ final readonly class AuthValidationListener
         }
 
         try {
-            $userData = $this->authBackendClient->getCurrentUser($accessToken);
+            $userData = $this->authBackendClient->introspectJwt($accessToken);
+        } catch (AuthBackendForbiddenException $e) {
+            // 403: sesja ŻYJE, ale user nie ma dostępu do tego panelu. Rzucamy
+            // AccessDeniedHttpException (HttpException — NIE security'owy
+            // AccessDeniedException, którego łapie firewall ExceptionListener i
+            // robi 401/redirect). Bąbelkuje do kernela → 403 → ExceptionListener
+            // konsumenta. Front: PanelAccessDeniedError (bez refreshu/czyszczenia).
+            // NIE doliczamy do breakera — to nie awaria mastera.
+            throw new AccessDeniedHttpException($e->getMessage(), $e);
+        } catch (AuthBackendUnauthorizedException) {
+            // 401: sesja martwa (token nieważny/wygasły, iss/ver, konto disabled).
+            // Interceptor frontu wywoła /api/token/refresh; jeśli i to padnie,
+            // ciasteczka są czyszczone i sesja kończona.
+            throw new UnauthorizedHttpException('Bearer', 'Token nie jest już ważny na serwerze uwierzytelniania.');
         } catch (AuthBackendException $e) {
-            // Błąd transportu lub 5xx. Fail open, doliczamy do licznika breakera.
+            // Błąd transportu lub 5xx. Fail OPEN, doliczamy do licznika breakera —
+            // NIE wylogowujemy przy awarii mastera.
             $this->recordFailure($e->getMessage());
 
             return;
-        }
-
-        if (null === $userData) {
-            // Auth server odpowiedział 401: token unieważniony, user zablokowany
-            // albo tokenVersion się nie zgadza. Odrzucamy żądanie. Interceptor
-            // frontu wywoła /api/token/refresh, ten też zwróci 401, wyczyści
-            // ciasteczka i dokończy wylogowanie.
-            throw new UnauthorizedHttpException('Bearer', 'Token nie jest już ważny na serwerze uwierzytelniania.');
         }
 
         // Auth server zwrócił 200 — to nasze źródło prawdy. Synchronizujemy
@@ -100,14 +116,10 @@ final readonly class AuthValidationListener
         // displayName, blokada/odblokowanie konta) propagują się do
         // mikroserwisu w czasie cache TTL (~30s) bez konieczności
         // podbijania tokenVersion.
+        //
+        // disabled NIE jest tu sprawdzane osobno — auth server zwraca 401 dla
+        // disabled (introspekcja waliduje sesję), więc 200 = konto aktywne.
         $this->userMirrorSyncer->syncFromMe($userData);
-
-        if ($userData->disabled) {
-            // Konto zostało zablokowane na auth serverze, ale token jeszcze
-            // ważny. Odrzucamy żądanie. Front interceptor zrobi refresh,
-            // który auth server odrzuci 401 i wyczyści ciasteczka.
-            throw new UnauthorizedHttpException('Bearer', 'Konto zostało zablokowane.');
-        }
 
         $this->markValidated($claims);
         $this->resetFailures();

@@ -6,6 +6,7 @@ namespace Musikhood\AuthClient\Controller;
 
 use Musikhood\AuthClient\Cookie\AuthCookieFactory;
 use Musikhood\AuthClient\Exception\AuthBackendException;
+use Musikhood\AuthClient\Exception\AuthBackendForbiddenException;
 use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Musikhood\AuthClient\Http\AuthBackendClient;
 use Psr\Log\LoggerInterface;
@@ -42,12 +43,25 @@ class RefreshTokenController extends AbstractController
 
         try {
             $tokens = $this->authBackendClient->refresh($refreshToken);
+        } catch (AuthBackendForbiddenException $e) {
+            // 403 = brak dostępu do panelu (sesja ŻYJE). NIGDY nie czyścimy
+            // ciasteczek przy 403 — to nie jest nieważna sesja, tylko brak
+            // dostępu do TEGO panelu. Front (paczka JS) klasyfikuje to jako
+            // PanelAccessDeniedError i zostaje na loginie bez wylogowania z
+            // innych paneli. (Po relaksie panel-ownership backend-refresh nie
+            // powinien zwracać 403, ale utwardzamy kontrakt defensywnie.)
+            $this->logger->info('Refresh: 403 z auth servera — brak dostępu do panelu, NIE czyścimy ciasteczek', [
+                'reason' => $e->getMessage(),
+            ]);
+
+            return new JsonResponse(['error' => $e->getMessage()], Response::HTTP_FORBIDDEN);
         } catch (AuthBackendUnauthorizedException) {
-            // Refresh token został unieważniony lub wygasł na auth serverze,
-            // czyścimy ciasteczka, żeby frontend nie próbował dalej z nieważnymi
-            // danymi.
+            // 401 = refresh token unieważniony/wygasły na auth serverze. To
+            // jedyny przypadek czyszczenia ciasteczek — realna nieważność sesji.
             return $this->unauthorized();
         } catch (AuthBackendException $e) {
+            // 5xx/transport — master niedostępny. NIE czyścimy ciasteczek (to nie
+            // jest odmowa, tylko awaria). 503, front spróbuje ponownie.
             $this->logger->warning('Refresh: auth server nie odpowiedział poprawnie', ['error' => $e->getMessage()]);
 
             return new JsonResponse(

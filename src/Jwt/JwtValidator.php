@@ -16,8 +16,14 @@ use Ramsey\Uuid\Uuid;
  * Weryfikuje JWT wystawione przez auth server. Sprawdzamy:
  *   1. podpis (kluczami z {@see JwksProvider})
  *   2. `iss` zgodny z AUTH_BASE_URL
- *   3. `aud` zgodny z AUTH_PANEL_ID (id panelu który reprezentuje aplikacja)
- *   4. `exp` jeszcze nie minął (sprawdza firebase/php-jwt)
+ *   3. `exp` jeszcze nie minął (sprawdza firebase/php-jwt)
+ *
+ * PANEL-AGNOSTYCZNE: świadomie NIE walidujemy `aud`. Te same ciasteczka SSO
+ * (BEARER + refresh_token) są ważne na każdym panelu w domenie, więc odrzucanie
+ * tokenu po `aud`/`panel_id` było błędne (ping-pong aud → 401 → refresh →
+ * wylogowanie przy przełączaniu paneli). Claimy `aud`/`panel_id` zostają w
+ * payloadzie jako informacyjne, ale NIE są warunkiem ważności. O dostępie do
+ * konkretnego panelu rozstrzyga backendowa introspekcja ({@see \Musikhood\AuthClient\EventListener\AuthValidationListener}) → 403.
  *
  * Zwraca sparsowane claimy jako {@see JwtClaims}. Przy każdym błędzie
  * walidacji rzuca {@see InvalidJwtException} z opisem powodu. Logujemy go
@@ -35,7 +41,6 @@ final class JwtValidator
     public function __construct(
         private readonly JwksProvider $jwksProvider,
         private readonly string $authBaseUrl,
-        private readonly string $authPanelId,
     ) {}
 
     public function validate(string $token): JwtClaims
@@ -67,10 +72,8 @@ final class JwtValidator
             throw new InvalidJwtException("Niepoprawny issuer: oczekiwano '{$expectedIss}', otrzymano '{$actualIss}'");
         }
 
-        if (($claims['aud'] ?? null) !== $this->authPanelId) {
-            $aud = is_scalar($claims['aud'] ?? null) ? (string) $claims['aud'] : '<missing>';
-            throw new InvalidJwtException("Niepoprawne audience: oczekiwano '{$this->authPanelId}', otrzymano '{$aud}'");
-        }
+        // Świadomie NIE walidujemy `aud` — token jest panel-agnostyczny (patrz
+        // docblock klasy). O dostępie do panelu decyduje introspekcja, nie `aud`.
 
         return $this->buildClaims($claims);
     }
@@ -100,7 +103,7 @@ final class JwtValidator
     {
         $userIdRaw = $claims['user_id'] ?? null;
         $email = $claims['email'] ?? null;
-        $panelId = $claims['panel_id'] ?? null;
+        $panelIdRaw = $claims['panel_id'] ?? null;
         $iat = $claims['iat'] ?? null;
         $exp = $claims['exp'] ?? null;
 
@@ -110,9 +113,11 @@ final class JwtValidator
         if (!is_string($email) || '' === $email) {
             throw new InvalidJwtException('Brak lub niepoprawny claim: email');
         }
-        if (!is_string($panelId) || '' === $panelId) {
-            throw new InvalidJwtException('Brak lub niepoprawny claim: panel_id');
-        }
+        // panel_id jest OPCJONALNY — token panel-agnostyczny (patrz docblock klasy).
+        // Wspólne ciasteczko SSO niesie ten sam JWT na wszystkie panele, a część
+        // wystawień nie ma panel_id. Twarde wymaganie powodowało 401 → refresh →
+        // pętla. O dostępie i rolach decyduje introspekcja.
+        $panelId = is_string($panelIdRaw) && '' !== $panelIdRaw ? $panelIdRaw : null;
         if (!is_int($iat) || !is_int($exp)) {
             throw new InvalidJwtException('Brak lub niepoprawny claim: iat/exp');
         }

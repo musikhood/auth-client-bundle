@@ -404,15 +404,23 @@ na poziomie `info`.
 
 ## Kontrakt z front-endem
 
-Front nigdy nie widzi JWT. Wymaga trzech rzeczy:
+Front nigdy nie widzi JWT. Wymaga:
 
 - `axios.defaults.withCredentials = true` (lub równowartość `fetch` z
   `credentials: 'include'`)
 - na `401` z dowolnego `/api/*`: `POST /api/token/refresh`, potem retry
 - na `401` z `/api/token/refresh`: czyść lokalny stan UI, redirect do logowania
+- na **`403`** z dowolnego `/api/*` (brak dostępu do tego panelu, sesja ŻYJE):
+  **NIE** refreshuj, **NIE** czyść ciasteczek, **NIE** broadcastuj wylogowania —
+  pokaż ekran „brak dostępu" / login. Ciasteczka SSO zostają ważne na panelach,
+  do których user MA dostęp. Paczka `@musikhood-dev/auth-client` klasyfikuje to
+  jako `PanelAccessDeniedError` automatycznie.
 
-To dokładnie ten sam kontrakt co przy gadaniu wprost z auth serverem,
-więc istniejący front przesiada się na inny backend bez zmian.
+Kontrakt 401 vs 403: **401 = sesja martwa** (globalne wylogowanie po nieudanym
+refreshu), **403 = brak dostępu do panelu** (sesja żyje, bez czyszczenia).
+
+To ten sam kontrakt co przy gadaniu wprost z auth serverem, więc istniejący
+front przesiada się na inny backend bez zmian.
 
 ## Pełna konfiguracja
 
@@ -424,7 +432,7 @@ defaulty.
 ```yaml
 auth_client:
     base_url:      '%env(AUTH_BASE_URL)%'      # wymagane
-    panel_id:      '%env(AUTH_PANEL_ID)%'      # wymagane
+    panel_id:      '%env(AUTH_PANEL_ID)%'      # wymagane (API-token gating; NIE bramkuje JWT — patrz niżej)
     client_id:     '%env(AUTH_CLIENT_ID)%'     # wymagane
     client_secret: '%env(AUTH_CLIENT_SECRET)%' # wymagane
 
