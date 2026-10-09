@@ -158,6 +158,9 @@ final class JwtValidator
             issuedAt: (new \DateTimeImmutable())->setTimestamp($iat),
             expiresAt: (new \DateTimeImmutable())->setTimestamp($exp),
             tokenVersion: $tokenVersion,
+            amr: is_array($claims['amr'] ?? null) ? array_values(array_filter($claims['amr'], 'is_string')) : [],
+            sessionId: $this->stringClaim($claims, 'sid'),
+            deviceFpHash: $this->stringClaim($claims, 'fph'),
         );
     }
 

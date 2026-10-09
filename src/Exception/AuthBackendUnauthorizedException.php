@@ -9,6 +9,6 @@ namespace Musikhood\AuthClient\Exception;
  * Osobny typ od {@see AuthBackendException}, dzięki czemu wywołujący wie, że
  * powinien zakończyć sesję, a nie próbować ponownie po chwili.
  */
-final class AuthBackendUnauthorizedException extends AuthBackendException
+class AuthBackendUnauthorizedException extends AuthBackendException
 {
 }

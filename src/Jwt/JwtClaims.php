@@ -29,6 +29,10 @@ final readonly class JwtClaims
      *                     wystawionych zanim auth server wdrożył Phase 1
      *                     (kompatybilność wsteczna, wygasną w ciągu TTL access
      *                     tokena, typowo ~15 min)
+     * @param list<string> $amr claim `amr` (2FA): ["pwd"] | ["pwd","otp"] | ["pwd","recovery"] |
+     *                     ["pwd","mfa_remembered"]; [] dla tokenów sprzed 2FA
+     * @param string|null  $sessionId claim `sid` — stały identyfikator sesji
+     * @param string|null  $deviceFpHash claim `fph` — hash fingerprintu, gdy sesja związana z urządzeniem
      */
     public function __construct(
         public UuidInterface $userId,
@@ -40,5 +44,8 @@ final readonly class JwtClaims
         public \DateTimeImmutable $issuedAt,
         public \DateTimeImmutable $expiresAt,
         public ?int $tokenVersion = null,
+        public array $amr = [],
+        public ?string $sessionId = null,
+        public ?string $deviceFpHash = null,
     ) {}
 }

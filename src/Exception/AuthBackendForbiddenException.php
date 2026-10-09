@@ -10,6 +10,6 @@ namespace Musikhood\AuthClient\Exception;
  * Niesie oryginalny tekst z auth servera w `message`, żeby konsument
  * mógł go propagować do frontendu.
  */
-final class AuthBackendForbiddenException extends AuthBackendException
+class AuthBackendForbiddenException extends AuthBackendException
 {
 }
