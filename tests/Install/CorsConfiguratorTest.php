@@ -46,7 +46,7 @@ final class CorsConfiguratorTest extends InstallTestCase
 
     public function testPim07FileNeedsNoChange(): void
     {
-        $this->put(CorsConfigurator::PATH, $this->fixture('nelmio_cors.pim07.yaml'));
+        $this->put(CorsConfigurator::PATH, $this->fixture('nelmio_cors.legacy07.yaml'));
 
         self::assertSame(ChangeKind::Unchanged, (new CorsConfigurator())->plan($this->projectDir, nelmioInstalled: true)->kind);
     }

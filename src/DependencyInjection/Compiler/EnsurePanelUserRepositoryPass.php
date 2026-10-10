@@ -12,8 +12,8 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 /**
  * Picks the user repository:
  *   - the application registered its own {@see PanelUserRepositoryInterface}
- *     (`#[AsAlias]` / alias in services.yaml — e.g. a Doctrine mirror table,
- *     like PIM) → used as is;
+ *     (`#[AsAlias]` / alias in services.yaml — e.g. a Doctrine mirror table)
+ *     → used as is;
  *   - otherwise → the built-in stateless repository (no entity, no table):
  *     {@see StatelessPanelUserRepository}.
  *

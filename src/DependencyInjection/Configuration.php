@@ -13,9 +13,6 @@ use Symfony\Component\Config\Definition\ConfigurationInterface;
  */
 final class Configuration implements ConfigurationInterface
 {
-    /** Production API Core (auth server) — editor_v3_backend k8s/prod ingress. */
-    public const DEFAULT_BASE_URL = 'https://editor-v3-backend.vitkac.com';
-
     public function getConfigTreeBuilder(): TreeBuilder
     {
         $treeBuilder = new TreeBuilder('auth_client');
@@ -30,9 +27,9 @@ final class Configuration implements ConfigurationInterface
                 // works (and the container compiles) without config/packages/auth_client.yaml.
                 // A missing env fails only at runtime — `auth-client:doctor` reports it.
                 ->scalarNode('base_url')
-                    ->defaultValue('%env(default:auth_client.default_base_url:AUTH_BASE_URL)%')
+                    ->defaultValue('%env(AUTH_BASE_URL)%')
                     ->cannotBeEmpty()
-                    ->info('Auth server base URL (API Core). Domyślnie env AUTH_BASE_URL, bez niego produkcja.')
+                    ->info('Adres auth servera. Domyślnie env AUTH_BASE_URL (wymagany — wartość z bazy dostępów).')
                 ->end()
                 ->scalarNode('panel_id')
                     ->defaultValue('%env(AUTH_PANEL_ID)%')
@@ -76,7 +73,7 @@ final class Configuration implements ConfigurationInterface
                             ->values(['lax', 'strict', 'none'])
                             // SameSite is evaluated per registrable domain ("site"), not per host:
                             // a front and an API on subdomains of the same domain
-                            // (pim.vitkac.com / pim-api.vitkac.com, or localhost on different
+                            // (panel.example.com / panel-api.example.com, or localhost on different
                             // ports) are same-site and work with `lax`. Use `none` only when the
                             // front and the API live on different domains (requires secure=true).
                             ->defaultValue('lax')

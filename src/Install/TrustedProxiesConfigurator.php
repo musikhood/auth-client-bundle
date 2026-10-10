@@ -9,9 +9,9 @@ use Symfony\Component\Yaml\Yaml;
 
 /**
  * Trusted proxies, so `Request::getClientIp()` is the end user's IP behind the
- * ingress / Traefik. The bundle forwards it to the auth server as `X-Client-Ip`
+ * ingress / reverse proxy. The bundle forwards it to the auth server as `X-Client-Ip`
  * (login history, per-IP attempt limit). The auth server treats a private /
- * reserved X-Client-Ip like a missing header (API Core decision) — so a
+ * reserved X-Client-Ip like a missing header (auth server decision) — so a
  * cluster where the real IP is lost before the proxy degrades safely.
  *
  * Symfony >= 7.2 reads `SYMFONY_TRUSTED_PROXIES` by default; older versions
@@ -52,7 +52,7 @@ final class TrustedProxiesConfigurator
         }
 
         $changes[] = EnvFile::plan($projectDir, self::ENV_PATH, self::ENV_NAME, 'private_ranges', [
-            'Trust X-Forwarded-* from the ingress / Traefik, so the auth server sees the user IP (auth-client-bundle).',
+            'Trust X-Forwarded-* from the ingress / reverse proxy, so the auth server sees the user IP (auth-client-bundle).',
         ], $definedEnv);
 
         return $changes;

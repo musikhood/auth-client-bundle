@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Musikhood\AuthClient\Command;
 
+use Musikhood\AuthClient\AiGuide;
 use Musikhood\AuthClient\Doctor\AuthDoctor;
 use Musikhood\AuthClient\Doctor\CheckResult;
 use Musikhood\AuthClient\Doctor\CheckStatus;
@@ -12,6 +13,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * `bin/console auth-client:doctor` — checks env, connectivity, client
@@ -21,8 +23,11 @@ use Symfony\Component\Console\Output\OutputInterface;
 #[AsCommand(name: 'auth-client:doctor', description: 'Sprawdza integrację panelu z auth serverem (env, połączenie, security, CORS, ciasteczka).')]
 final class DoctorCommand extends Command
 {
-    public function __construct(private readonly AuthDoctor $doctor)
-    {
+    public function __construct(
+        private readonly AuthDoctor $doctor,
+        #[Autowire('%kernel.project_dir%')]
+        private readonly string $projectDir,
+    ) {
         parent::__construct();
     }
 
@@ -46,6 +51,7 @@ final class DoctorCommand extends Command
         $output->writeln($failed
             ? '<error> Są błędy — popraw pozycje oznaczone ✘ i uruchom ponownie. </error>'
             : '<info>Wszystko gotowe ✔</info> (ostrzeżenia ! nie blokują działania).');
+        $output->writeln(AiGuide::line($this->projectDir));
 
         return $failed ? Command::FAILURE : Command::SUCCESS;
     }

@@ -12,7 +12,7 @@ final readonly class Installer
 {
     /** @var array<string, string> env => committed default in .env (empty = to be filled in .env.local / secrets) */
     public const PANEL_ENV = [
-        'AUTH_BASE_URL' => 'https://editor-v3-backend.vitkac.com',
+        'AUTH_BASE_URL' => '',
         'AUTH_PANEL_ID' => '',
         'AUTH_CLIENT_ID' => '',
         'AUTH_CLIENT_SECRET' => '',
@@ -35,8 +35,8 @@ final readonly class Installer
         $changes = [];
         foreach (self::PANEL_ENV as $name => $default) {
             $changes[] = EnvFile::plan($projectDir, '.env', $name, $default, 'AUTH_BASE_URL' === $name
-                ? ['auth-client-bundle: auth server (API Core). Panel values below come from the Work HUB access base',
-                    '(secret_to_env) — set them in .env.local / k8s secrets, never commit the secret.']
+                ? ['auth-client-bundle: auth server URL and panel values come from the access base (secret_to_env)',
+                    '— set them in .env.local / k8s secrets, never commit the secret.']
                 : [], $definedEnv);
         }
         $changes[] = $this->routes->plan($projectDir);
@@ -47,7 +47,7 @@ final readonly class Installer
         if ($nelmioInstalled && ChangeKind::Create === $cors->kind) {
             // Nelmio installed without its recipe: the generated file needs the origin env.
             $changes[] = EnvFile::plan($projectDir, '.env', 'CORS_ALLOW_ORIGIN', "'^https?://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?$'", [
-                'Origins allowed to call the API with cookies (regex). Production: e.g. ^https://panel\\.vitkac\\.com$',
+                'Origins allowed to call the API with cookies (regex). Production: e.g. ^https://panel\\.example\\.com$',
             ], $definedEnv);
         }
 

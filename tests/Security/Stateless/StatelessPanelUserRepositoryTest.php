@@ -25,7 +25,7 @@ final class StatelessPanelUserRepositoryTest extends TestCase
         $user = (new UserMirrorSyncer($repository))->upsert($this->claims($id, ['EDIT']));
 
         self::assertInstanceOf(StatelessPanelUser::class, $user);
-        self::assertSame('jan@vitkac.com', $user->getUserIdentifier());
+        self::assertSame('jan@example.com', $user->getUserIdentifier());
         self::assertSame(['ROLE_USER', 'ROLE_EDIT'], $user->getRoles());
     }
 
@@ -82,7 +82,7 @@ final class StatelessPanelUserRepositoryTest extends TestCase
     {
         return new JwtClaims(
             userId: $id,
-            email: 'jan@vitkac.com',
+            email: 'jan@example.com',
             displayName: 'Jan',
             panelId: null,
             panelName: null,
@@ -99,7 +99,7 @@ final class StatelessPanelUserRepositoryTest extends TestCase
     {
         return new UserData(
             id: $id,
-            email: 'jan@vitkac.com',
+            email: 'jan@example.com',
             displayName: 'Jan',
             roles: [],
             panelId: null,

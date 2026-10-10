@@ -63,6 +63,20 @@ final class AuthDoctorTest extends TestCase
         self::assertSame(CheckStatus::Skipped, $this->find($results, 'Połączenie z auth serverem')->status);
     }
 
+    public function testMissingBaseUrlFailsWithAccessBaseHint(): void
+    {
+        // No built-in default auth server since 0.8.1 — AUTH_BASE_URL is required like the panel values.
+        $http = new MockHttpClient(static fn (): MockResponse => throw new \LogicException('no HTTP call expected'));
+
+        $results = $this->doctor($http, ['auth_client.base_url' => FakeParameters::MISSING_ENV])->run();
+
+        self::assertTrue(AuthDoctor::hasFailures($results));
+        $check = $this->find($results, 'Konfiguracja base_url');
+        self::assertSame(CheckStatus::Failure, $check->status);
+        self::assertStringContainsString('AUTH_BASE_URL', (string) $check->detail);
+        self::assertStringContainsString('secret_to_env', (string) $check->hint);
+    }
+
     public function testMissingCorsHeadersFail(): void
     {
         $results = $this->doctor($this->authServer(), [
@@ -134,10 +148,10 @@ final class AuthDoctorTest extends TestCase
 
     public function testSameSiteNoneOnTheSameDomainSuggestsLax(): void
     {
-        $none = new AuthCookieFactory('BEARER', 'refresh_token', '/', '.vitkac.com', true, true, 'none');
+        $none = new AuthCookieFactory('BEARER', 'refresh_token', '/', '.example.com', true, true, 'none');
         $cors = ['nelmio_cors.defaults' => [
             'allow_credentials' => true,
-            'allow_origin' => ['^https://pim\\.vitkac\\.com$'],
+            'allow_origin' => ['^https://panel\\.example\\.com$'],
             'allow_headers' => ['x-device-fp'],
             'expose_headers' => ['retry-after'],
         ]];
@@ -151,13 +165,13 @@ final class AuthDoctorTest extends TestCase
         self::assertNull($this->find($this->doctor($this->authServer(), $cors, null, $none)->run(), 'Ciasteczka')->hint);
 
         // Origin given as a real regex → front host unknown → no hint.
-        $cors['nelmio_cors.defaults']['allow_origin'] = ['^https?://(pim|ai)\\.vitkac\\.com$'];
+        $cors['nelmio_cors.defaults']['allow_origin'] = ['^https?://(panel|admin)\\.example\\.com$'];
         self::assertNull($this->find($this->doctor($this->authServer(), $cors, null, $none)->run(), 'Ciasteczka')->hint);
 
         // API host from framework.router.default_uri when no cookie domain is set.
         $hostOnly = new AuthCookieFactory('BEARER', 'refresh_token', '/', null, true, true, 'none');
-        $cors['nelmio_cors.defaults']['allow_origin'] = ['https://pim.vitkac.com'];
-        $withRouter = $cors + ['router.request_context.host' => 'pim-api.vitkac.com'];
+        $cors['nelmio_cors.defaults']['allow_origin'] = ['https://panel.example.com'];
+        $withRouter = $cors + ['router.request_context.host' => 'panel-api.example.com'];
         self::assertNotNull($this->find($this->doctor($this->authServer(), $withRouter, null, $hostOnly)->run(), 'Ciasteczka')->hint);
         self::assertNull($this->find($this->doctor($this->authServer(), $cors + ['router.request_context.host' => 'localhost'], null, $hostOnly)->run(), 'Ciasteczka')->hint);
     }
@@ -206,7 +220,7 @@ final class AuthDoctorTest extends TestCase
         $values = array_merge([
             'auth_client.base_url' => 'https://auth.example',
             'auth_client.panel_id' => self::PANEL_ID,
-            'auth_client.client_id' => 'pim-backend',
+            'auth_client.client_id' => 'panel-backend',
             'auth_client.client_secret' => self::SECRET,
             'nelmio_cors.defaults' => [
                 'allow_credentials' => true,

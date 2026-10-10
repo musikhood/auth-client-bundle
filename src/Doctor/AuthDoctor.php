@@ -6,7 +6,6 @@ namespace Musikhood\AuthClient\Doctor;
 
 use Composer\InstalledVersions;
 use Musikhood\AuthClient\Cookie\AuthCookieFactory;
-use Musikhood\AuthClient\DependencyInjection\Configuration;
 use Musikhood\AuthClient\Doctor\SecurityCoverage\SecurityCoverageInspectorInterface;
 use Musikhood\AuthClient\Routing\PublicRoutes;
 use Musikhood\AuthClient\Security\JwtCookieAuthenticator;
@@ -116,7 +115,7 @@ final readonly class AuthDoctor
             try {
                 $value = $this->parameters->get($parameter);
             } catch (EnvNotFoundException) {
-                $results[] = CheckResult::failure($label, sprintf('brak zmiennej środowiskowej (zwykle %s)', $env), sprintf('Ustaw %s w .env.local / sekretach (dane panelu z bazy dostępów Work HUB).', $env));
+                $results[] = CheckResult::failure($label, sprintf('brak zmiennej środowiskowej (zwykle %s)', $env), sprintf('Ustaw %s w .env.local / sekretach — wartość z bazy dostępów (secret_to_env).', $env));
                 $complete = false;
                 continue;
             } catch (ParameterNotFoundException) {
@@ -126,7 +125,7 @@ final readonly class AuthDoctor
             }
 
             if (!\is_string($value) || '' === trim($value)) {
-                $results[] = CheckResult::failure($label, 'pusta wartość', sprintf('Uzupełnij %s.', $env));
+                $results[] = CheckResult::failure($label, 'pusta wartość', sprintf('Uzupełnij %s — wartość z bazy dostępów (secret_to_env).', $env));
                 $complete = false;
                 continue;
             }
@@ -139,7 +138,7 @@ final readonly class AuthDoctor
         }
 
         if (isset($values['panel_id']) && !Uuid::isValid($values['panel_id'])) {
-            $results[] = CheckResult::failure('Format panel_id', 'to nie jest UUID', 'AUTH_PANEL_ID to UUID panelu z auth-panelu (nie nazwa ani client_id).');
+            $results[] = CheckResult::failure('Format panel_id', 'to nie jest UUID', 'AUTH_PANEL_ID to UUID panelu z panelu administracyjnego auth servera (nie nazwa ani client_id).');
             $complete = false;
         }
 
@@ -188,7 +187,7 @@ final readonly class AuthDoctor
             $response = $this->httpClient->request('GET', $baseUrl . '/.well-known/jwks.json', ['timeout' => 5]);
             $status = $response->getStatusCode();
             if (200 !== $status) {
-                return CheckResult::failure($label, sprintf('HTTP %d z /.well-known/jwks.json', $status), 'Sprawdź AUTH_BASE_URL — musi wskazywać auth server (master), np. ' . Configuration::DEFAULT_BASE_URL . '.');
+                return CheckResult::failure($label, sprintf('HTTP %d z /.well-known/jwks.json', $status), 'Sprawdź AUTH_BASE_URL — musi wskazywać auth server (wartość z bazy dostępów, secret_to_env).');
             }
             $body = $response->toArray(false);
             if (!\is_array($body['keys'] ?? null) || [] === $body['keys']) {
@@ -242,7 +241,7 @@ final readonly class AuthDoctor
         }
 
         return 404 === $status
-            ? CheckResult::failure($label, 'brak tras 2FA na auth serverze (HTTP 404)', 'Auth server jest starszy niż wymaga bundle — zaktualizuj API Core albo użyj bundla < 0.7.')
+            ? CheckResult::failure($label, 'brak tras 2FA na auth serverze (HTTP 404)', 'Auth server jest starszy niż wymaga bundle — zaktualizuj auth server albo użyj bundla < 0.7.')
             : CheckResult::ok($label);
     }
 
@@ -281,7 +280,7 @@ final readonly class AuthDoctor
 
         return 0 === strcasecmp($panelId, $config['panel_id'])
             ? CheckResult::ok($label, $panelId)
-            : CheckResult::failure($label, sprintf('klient należy do panelu %s, a AUTH_PANEL_ID = %s', $panelId, $config['panel_id']), 'AUTH_PANEL_ID i AUTH_CLIENT_ID muszą pochodzić z tego samego panelu w auth-panelu.');
+            : CheckResult::failure($label, sprintf('klient należy do panelu %s, a AUTH_PANEL_ID = %s', $panelId, $config['panel_id']), 'AUTH_PANEL_ID i AUTH_CLIENT_ID muszą pochodzić z tego samego panelu (panel administracyjny auth servera).');
     }
 
     /**
@@ -402,7 +401,7 @@ final readonly class AuthDoctor
             return new CheckResult(CheckStatus::Ok, $label, $detail, 'Front i API są w tej samej domenie — same_site: lax wystarczy (none niepotrzebnie osłabia ochronę przed CSRF).');
         }
 
-        return CheckResult::ok($label, null === $domain ? $detail . ' — gdy front jest na innej subdomenie, ustaw AUTH_COOKIE_DOMAIN (np. .vitkac.com)' : $detail);
+        return CheckResult::ok($label, null === $domain ? $detail . ' — gdy front jest na innej subdomenie, ustaw AUTH_COOKIE_DOMAIN (np. .example.com)' : $detail);
     }
 
     /**
@@ -444,7 +443,7 @@ final readonly class AuthDoctor
 
     /**
      * Host of a literal origin or of a simple anchored origin regex
-     * (`^https://pim\.vitkac\.com$`); anything with real regex syntax → null.
+     * (`^https://panel\.example\.com$`); anything with real regex syntax → null.
      */
     private static function hostFromOriginPattern(string $origin): ?string
     {
@@ -456,7 +455,7 @@ final readonly class AuthDoctor
         return strtolower($m[1]);
     }
 
-    /** Approximation without the public suffix list: the last two labels (vitkac.com), localhost / IP as is. */
+    /** Approximation without the public suffix list: the last two labels (example.com), localhost / IP as is. */
     private static function registrableDomain(string $host): string
     {
         $host = strtolower(rtrim($host, '.'));

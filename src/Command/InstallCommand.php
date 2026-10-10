@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Musikhood\AuthClient\Command;
 
+use Musikhood\AuthClient\AiGuide;
 use Musikhood\AuthClient\Install\ChangeKind;
 use Musikhood\AuthClient\Install\Installer;
 use Musikhood\AuthClient\Install\LineDiff;
@@ -91,6 +92,8 @@ final class InstallCommand extends Command
         if ([] !== $manual) {
             $output->writeln(sprintf('<comment>Do zrobienia ręcznie: %d pozycja(e) oznaczone [ręcznie] powyżej.</comment>', \count($manual)));
         }
+
+        $output->writeln(AiGuide::line($this->projectDir));
 
         if ($input->getOption('no-doctor')) {
             return Command::SUCCESS;

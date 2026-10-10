@@ -48,8 +48,8 @@ final class SecurityConfiguratorTest extends InstallTestCase
 
     public function testPim07ConfigurationNeedsNoChange(): void
     {
-        // PIM 0.7: own `login` firewall + webhook via PUBLIC_ACCESS in the api firewall.
-        $this->put(SecurityConfigurator::PATH, $this->fixture('security.pim07.yaml'));
+        // An app integrated on 0.7: own `login` firewall + webhook via PUBLIC_ACCESS in the api firewall.
+        $this->put(SecurityConfigurator::PATH, $this->fixture('security.legacy07.yaml'));
 
         $change = (new SecurityConfigurator())->plan($this->projectDir);
 

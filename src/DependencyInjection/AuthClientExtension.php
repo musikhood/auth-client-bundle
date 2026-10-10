@@ -22,8 +22,6 @@ final class AuthClientExtension extends Extension
     {
         $config = $this->processConfiguration(new Configuration(), $configs);
 
-        // Fallback of `%env(default:auth_client.default_base_url:AUTH_BASE_URL)%`.
-        $container->setParameter('auth_client.default_base_url', Configuration::DEFAULT_BASE_URL);
         $container->setParameter('auth_client.base_url', $config['base_url']);
         $container->setParameter('auth_client.panel_id', $config['panel_id']);
         $container->setParameter('auth_client.client_id', $config['client_id']);

@@ -60,7 +60,7 @@ security:
         - { path: ^/api/((login(/mfa)?|logout|token/(refresh|invalidate)|session/mfa|mfa/enrollment/request)$|doc), roles: PUBLIC_ACCESS }
         # Webhook inwalidacji usera od auth servera (0s revocation). Endpoint ma
         # własną walidację kryptograficzną przez WebhookJwtValidator w controllerze
-        # paczki (podpisany JWT mastera, aud=panel_id PIM) — model jak weryfikacja
+        # paczki (podpisany JWT mastera, aud=panel_id panelu) — model jak weryfikacja
         # webhooków Stripe/GitHub. JwtCookieAuthenticator paczki ma supports()
         # returning null (lazy mode), więc PUBLIC_ACCESS pomija go dla tej ścieżki.
         # MUSI być przed catch-all ^/api (Symfony: first-match-wins).

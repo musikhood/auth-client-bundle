@@ -1,7 +1,7 @@
 # auth-client-bundle
 
-Symfony bundle dla paneli, które delegują uwierzytelnianie do auth servera
-(API Core / editor_v3_backend): logowanie, 2FA, refresh, wylogowanie, JWT/JWKS,
+Symfony bundle dla paneli, które delegują uwierzytelnianie do centralnego auth servera:
+logowanie, 2FA, refresh, wylogowanie, JWT/JWKS,
 ciasteczka HttpOnly (`BEARER` + `refresh_token`) i introspekcja sesji z circuit
 breakerem. Front (`@musikhood-dev/auth-client`) nigdy nie widzi JWT.
 
@@ -10,18 +10,20 @@ w env, a `auth-client:install` + `auth-client:doctor` robią resztę.
 Pełna checklista podpięcia panelu (admin → backend → front → 2FA → problemy):
 **[INTEGRATION.md](INTEGRATION.md)**.
 
+> Agent AI podpinający panel: [AI_INTEGRATION.md](AI_INTEGRATION.md) (w paczce: `vendor/musikhood/auth-client-bundle/AI_INTEGRATION.md`;
+> `auth-client:install` i `auth-client:doctor` wypisują tę ścieżkę).
+
 ## Quick start (5 minut)
 
-1. **Admin** tworzy panel w auth-panelu (origin frontu, webhook URL = URL backendu panelu) i zapisuje
-   `panel_id`, `client_id`, `client_secret` w bazie dostępów Work HUB.
+1. **Admin** tworzy panel w panelu administracyjnym auth servera (origin frontu, webhook URL = URL backendu panelu) i zapisuje
+   `AUTH_BASE_URL`, `panel_id`, `client_id`, `client_secret` w bazie dostępów Work HUB.
 2. Instalacja paczki:
    ```bash
    composer require musikhood/auth-client-bundle:^0.8
    ```
-3. Dane panelu do `.env.local` (lokalnie) / sekretu k8s — z bazy dostępów Work HUB (`secret_to_env`):
-   `AUTH_PANEL_ID`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_SECRET`. `AUTH_BASE_URL` jest opcjonalny —
-   domyślnie `https://editor-v3-backend.vitkac.com`, jedyny auth server (master) **także dla paneli dev**
-   (instancja dev API Core to mirror bez endpointów `/api/auth/backend/*`).
+3. Adres auth servera i dane panelu do `.env.local` (lokalnie) / sekretu k8s — z bazy dostępów Work HUB
+   (`secret_to_env`): `AUTH_BASE_URL` (np. `https://auth.example.com`), `AUTH_PANEL_ID`, `AUTH_CLIENT_ID`,
+   `AUTH_CLIENT_SECRET`. Wszystkie cztery są wymagane — bundle nie ma wbudowanego adresu auth servera (od 0.8.1).
 4. Konfiguracja security, CORS, tras i trusted proxies (pokazuje zmiany i pyta przed zapisem):
    ```bash
    bin/console auth-client:install
@@ -30,11 +32,11 @@ Pełna checklista podpięcia panelu (admin → backend → front → 2FA → pro
    ```bash
    bin/console auth-client:doctor
    ```
-6. Front: `npm i @musikhood-dev/auth-client` i `npx @musikhood-dev/auth-client init`
+6. Front: `npm i @musikhood-dev/auth-client@^2.3.1` i `npx @musikhood-dev/auth-client init`
    ([README paczki](https://github.com/musikhood/auth-client#quick-start-5-minut)).
 
 Gotowe. Nie potrzebujesz encji `User`, tabeli ani migracji (tryb bezstanowy). Polityka 2FA
-(`off` / `optional` / `required`) i device binding — wyłącznie w auth-panelu.
+(`off` / `optional` / `required`) i device binding — wyłącznie w panelu administracyjnym auth servera.
 
 > **Endpoint Flex jest opcjonalny.** Bez niego Flex i tak rejestruje bundle w `config/bundles.php`,
 > a `auth-client:install` dopisuje import tras i klucze `AUTH_*` do `.env`. Jeśli chcesz recipe
@@ -46,7 +48,7 @@ Gotowe. Nie potrzebujesz encji `User`, tabeli ani migracji (tryb bezstanowy). Po
 ## Jak działa
 
 ```
-przeglądarka ──cookies──▶ backend panelu (ten bundle) ──HTTP Basic (client_id/secret)──▶ auth server (API Core)
+przeglądarka ──cookies──▶ backend panelu (ten bundle) ──HTTP Basic (client_id/secret)──▶ auth server
                           │  /api/login, /api/login/mfa, /api/session/mfa, /api/token/refresh, /api/logout
                           │  JWT z ciasteczka BEARER → podpis z JWKS (offline)
                           └─ co ≤30 s / user: introspekcja → dostęp do panelu, polityka 2FA, role
@@ -59,7 +61,7 @@ przeglądarka ──cookies──▶ backend panelu (ten bundle) ──HTTP Basi
   co `validation_cache_ttl` (30 s) pyta auth server, czy sesja żyje, czy user ma dostęp do TEGO panelu
   i czy spełnia politykę 2FA panelu. 401 = sesja martwa (front robi refresh), 403 = brak dostępu / 2FA.
 - **User**: domyślnie **bezstanowy** — budowany z JWT i introspekcji, snapshot w `cache.app`
-  (role zmienione w auth-panelu docierają w ≤30 s). Opcjonalnie własna tabela userów
+  (role zmienione w panelu administracyjnym docierają w ≤30 s). Opcjonalnie własna tabela userów
   („[Lokalna kopia userów](#opcjonalnie-lokalna-kopia-userów-encja--tabela)”).
 - **Trasy publiczne** (jedno źródło w kodzie: `Musikhood\AuthClient\Routing\PublicRoutes`):
   `/api/login`, `/api/login/mfa`, `/api/logout`, `/api/token/refresh`, `/api/token/invalidate`,
@@ -74,7 +76,7 @@ Opcje: `--dry-run` (tylko pokaż), `--yes` (zapisz bez pytania), `--no-doctor`.
 
 | Plik | Co robi |
 |---|---|
-| `.env` | dopisuje `AUTH_BASE_URL` (prod), puste `AUTH_PANEL_ID/CLIENT_ID/CLIENT_SECRET` (z komentarzem o bazie dostępów) i `SYMFONY_TRUSTED_PROXIES=private_ranges` — tylko klucze, których nie ma w `.env` ani w środowisku (`.env.local`, sekrety) |
+| `.env` | dopisuje puste `AUTH_BASE_URL` i `AUTH_PANEL_ID/CLIENT_ID/CLIENT_SECRET` (z komentarzem o bazie dostępów) i `SYMFONY_TRUSTED_PROXIES=private_ranges` — tylko klucze, których nie ma w `.env` ani w środowisku (`.env.local`, sekrety) |
 | `config/routes/auth_client.yaml` | import tras bundla (jeśli nigdzie go nie ma) |
 | `config/packages/security.yaml` | brak pliku / domyślny plik Symfony → pełna konfiguracja (sekcje `when@*` zachowane); **własne firewalle → nic nie nadpisuje**: sprawdza pokrycie tras bundla (kolejność jak w Symfony) i jeśli czegoś brakuje, wypisuje dokładny fragment do wklejenia |
 | `config/packages/nelmio_cors.yaml` | (jeśli jest NelmioCorsBundle) `allow_credentials: true`, `allow_headers` += `X-Device-Fp`, `expose_headers` += `Retry-After`; plik, którego nie da się bezpiecznie edytować → fragment do wklejenia; brak Nelmio → instrukcja |
@@ -104,7 +106,7 @@ do CI / smoke testu po deployu). Nigdy nie wypisuje sekretów.
 
 - PHP `>=8.2`, Symfony `^6.4 || ^7.0` (framework-bundle, security-bundle, http-client, console)
 - `cache.app` (zalecany Redis — snapshot userów, tokenVersion z webhooka, circuit breaker)
-- Auth server z 2FA (API Core od 2026-10) — doctor sprawdza
+- Auth server z trasami 2FA (`/api/auth/backend/login/mfa` itd.) — doctor sprawdza
 - Opcjonalnie: `nelmio/cors-bundle`, gdy front działa pod innym originem niż API
 
 ## Instalacja ręczna (bez `auth-client:install`)
@@ -143,7 +145,7 @@ CORS i trusted proxies — jak w tabeli `auth-client:install` wyżej.
 ## Opcjonalnie: lokalna kopia userów (encja + tabela)
 
 Potrzebne tylko, gdy aplikacja chce trzymać userów u siebie (np. relacje w bazie,
-wyszukiwanie po e-mailu w zapytaniach — jak PIM). Gdy kontener ma implementację
+wyszukiwanie po e-mailu w zapytaniach). Gdy kontener ma implementację
 `PanelUserRepositoryInterface`, bundle używa jej zamiast trybu bezstanowego —
 bez żadnej innej zmiany konfiguracji.
 
@@ -388,7 +390,7 @@ poll `/me`.
    Webhook autoryzuje się sam podpisem JWT auth servera — to model jak
    weryfikacja podpisu webhooków Stripe/GitHub, nie dziura w security.
 2. W panelu admin auth servera ustaw pole „Webhook URL" dla swojego panelu na
-   bazowy URL backendu mikroserwisu (np. `https://pim.vitkac.com`). Auth server
+   bazowy URL backendu mikroserwisu (np. `https://api.example.com`). Auth server
    sam dokleja ścieżkę `/api/auth-client/webhook/user-invalidated`.
 3. Upewnij się, że `cache.app` jest skonfigurowane (Redis zalecany — stan musi
    być współdzielony między procesami workerów i przeżyć restart).
@@ -434,7 +436,7 @@ z env, żeby było widać, skąd biorą się dane. Pełny dump:
 
 ```yaml
 auth_client:
-    base_url:      '%env(AUTH_BASE_URL)%'      # domyślnie env AUTH_BASE_URL, bez niego https://editor-v3-backend.vitkac.com
+    base_url:      '%env(AUTH_BASE_URL)%'      # domyślnie env AUTH_BASE_URL (wymagany, np. https://auth.example.com)
     panel_id:      '%env(AUTH_PANEL_ID)%'      # domyślnie env AUTH_PANEL_ID (API-token gating; NIE bramkuje JWT)
     client_id:     '%env(AUTH_CLIENT_ID)%'     # domyślnie env AUTH_CLIENT_ID
     client_secret: '%env(AUTH_CLIENT_SECRET)%' # domyślnie env AUTH_CLIENT_SECRET
@@ -446,7 +448,7 @@ auth_client:
         access_name: BEARER
         refresh_name: refresh_token
         path: /
-        domain: '%env(default::AUTH_COOKIE_DOMAIN)%'  # pusty = host-only; np. .vitkac.com gdy front i API są na różnych subdomenach
+        domain: '%env(default::AUTH_COOKIE_DOMAIN)%'  # pusty = host-only; np. .example.com gdy front i API są na różnych subdomenach
         secure: true
         http_only: true
         same_site: lax           # lax | strict | none — none tylko gdy front i API w różnych domenach (wymaga secure)
@@ -471,8 +473,8 @@ auth_client:
 ```
 
 `same_site` domyślnie `lax` — wystarcza, gdy front i API są w tej samej domenie rejestrowalnej (SameSite liczy
-się po „site”, nie po hoście): `pim.vitkac.com` + `pim-api.vitkac.com`, `localhost` na różnych portach.
-`none` ustaw tylko, gdy front i API są w **różnych domenach** (np. `panel.example.com` ↔ `api.vitkac.com`) —
+się po „site”, nie po hoście): `panel.example.com` + `panel-api.example.com`, `localhost` na różnych portach.
+`none` ustaw tylko, gdy front i API są w **różnych domenach** (np. `panel.example.com` ↔ `api.example.org`) —
 wymaga `secure: true` (HTTPS) i osłabia ochronę przed CSRF.
 
 ## API token (autoryzacja maszynowa)
@@ -524,7 +526,7 @@ Panel z polityką 2FA `off` (domyślnie) i user bez 2FA = zachowanie bajt w bajt
   (`expose_headers`) — auth-client 2.2 wysyła `X-Device-Fp` na każdym requeście. Od 0.8 robi to `auth-client:install`.
 - **Firewall**: trasy 2FA są w publicznym firewallu `login` — od 0.8 robi to `auth-client:install`, a
   `auth-client:doctor` sprawdza pokrycie na żywej konfiguracji.
-- **Polityka 2FA i device binding** ustawia się wyłącznie w auth-panelu (panel: `mfa_policy`, `device_binding`).
+- **Polityka 2FA i device binding** ustawia się wyłącznie w panelu administracyjnym auth servera (panel: `mfa_policy`, `device_binding`).
   `device_binding.mode` w bundlu zostaw `observe`.
 - Nowe wyjątki `AuthBackendClient` (podklasy dotychczasowych — stary kod łapiący `AuthBackendUnauthorizedException` /
   `AuthBackendForbiddenException` działa fail-closed): `AuthBackendMfaRequiredException`,
