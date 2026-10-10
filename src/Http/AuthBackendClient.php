@@ -7,7 +7,16 @@ namespace Musikhood\AuthClient\Http;
 use Musikhood\AuthClient\Dto\TokenPair;
 use Musikhood\AuthClient\Dto\UserData;
 use Musikhood\AuthClient\Exception\AuthBackendException;
+use Musikhood\AuthClient\Exception\AuthBackendDeviceMismatchException;
 use Musikhood\AuthClient\Exception\AuthBackendForbiddenException;
+use Musikhood\AuthClient\Exception\AuthBackendInvalidCredentialsException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaAlreadyEnabledException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaEnrollmentRequiredException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaInvalidCodeException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaRequiredException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaStepUpException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaTokenExpiredException;
+use Musikhood\AuthClient\Exception\AuthBackendTooManyAttemptsException;
 use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;
@@ -24,6 +33,11 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Endpoint `/api/v1/user/me` wymaga access tokena JWT w nagłówku
  * `Authorization: Bearer <token>`.
  *
+ * 2FA (0.7): pole `code` z body auth servera mapujemy na podklasy wyjątków
+ * (AuthBackendMfa*, AuthBackendTooManyAttemptsException, AuthBackendDeviceMismatchException).
+ * Odpowiedź bez `code` = zachowanie jak w 0.6. Dane przeglądarki end-usera
+ * (IP, UA, X-Device-Fp, `device`) idą przez {@see ClientContextProvider}.
+ *
  * Przy 401 rzucamy {@see AuthBackendUnauthorizedException}. Inne błędy
  * (timeout, błąd transportu, 5xx, niepoprawny JSON) rzucają ogólny
  * {@see AuthBackendException}. Wywołujący decyduje co dalej: fail open
@@ -39,34 +53,117 @@ final readonly class AuthBackendClient
         private string $authClientSecret,
         private float $authHttpTimeout,
         private float $authHttpMaxDuration,
+        private ?ClientContextProvider $clientContext = null,
     ) {}
 
-    public function login(string $email, string $password): TokenPair
+    /**
+     * @param array<string, mixed>|null $device komponenty fingerprintu z przeglądarki (auth-client >= 2.2)
+     *
+     * @throws AuthBackendMfaRequiredException           401 mfa_required (mfaToken)
+     * @throws AuthBackendMfaEnrollmentRequiredException 403 mfa_enrollment_required (enrollmentUrl)
+     * @throws AuthBackendTooManyAttemptsException       429
+     * @throws AuthBackendException                      inne 401/403/5xx/transport
+     */
+    public function login(string $email, string $password, ?array $device = null): TokenPair
     {
         $payload = $this->request(
             'POST',
             '/api/auth/backend/login',
-            options: [
-                'auth_basic' => [$this->authClientId, $this->authClientSecret],
-                'json' => ['email' => $email, 'password' => $password],
-            ],
+            options: $this->backendOptions(['email' => $email, 'password' => $password], $device),
         );
 
         return $this->buildTokenPair($payload);
     }
 
-    public function refresh(string $refreshToken): TokenPair
+    /**
+     * @param array<string, mixed>|null $device
+     *
+     * @throws AuthBackendDeviceMismatchException 401 device_mismatch (sesja odwołana)
+     * @throws AuthBackendException               inne 401/403/5xx/transport
+     */
+    public function refresh(string $refreshToken, ?array $device = null): TokenPair
     {
         $payload = $this->request(
             'POST',
             '/api/auth/backend/refresh',
-            options: [
-                'auth_basic' => [$this->authClientId, $this->authClientSecret],
-                'json' => ['refresh_token' => $refreshToken],
-            ],
+            options: $this->backendOptions(['refresh_token' => $refreshToken], $device),
         );
 
         return $this->buildTokenPair($payload);
+    }
+
+    /**
+     * Drugi krok logowania 2FA (POST /api/auth/backend/login/mfa).
+     *
+     * @param array<string, mixed>|null $device
+     *
+     * @throws AuthBackendMfaInvalidCodeException
+     * @throws AuthBackendMfaTokenExpiredException
+     * @throws AuthBackendTooManyAttemptsException
+     * @throws AuthBackendException
+     */
+    public function loginMfa(string $mfaToken, ?string $code, ?string $recoveryCode, bool $rememberDevice = false, ?array $device = null): TokenPair
+    {
+        $payload = $this->request(
+            'POST',
+            '/api/auth/backend/login/mfa',
+            options: $this->backendOptions([
+                'mfa_token' => $mfaToken,
+                'code' => $code,
+                'recovery_code' => $recoveryCode,
+                'remember_device' => $rememberDevice,
+            ], $device),
+        );
+
+        return $this->buildTokenPair($payload);
+    }
+
+    /**
+     * Step-up sesji (POST /api/auth/backend/session/mfa) — nowa para tokenów z amr otp/recovery.
+     *
+     * @param array<string, mixed>|null $device
+     *
+     * @throws AuthBackendException
+     */
+    public function sessionMfa(string $refreshToken, ?string $code, ?string $recoveryCode, bool $rememberDevice = false, ?array $device = null): TokenPair
+    {
+        $payload = $this->request(
+            'POST',
+            '/api/auth/backend/session/mfa',
+            options: $this->backendOptions([
+                'refresh_token' => $refreshToken,
+                'code' => $code,
+                'recovery_code' => $recoveryCode,
+                'remember_device' => $rememberDevice,
+            ], $device),
+        );
+
+        return $this->buildTokenPair($payload);
+    }
+
+    /**
+     * Link do konfiguracji 2FA dla zalogowanego usera (POST /api/auth/backend/mfa/enrollment/request).
+     * Wymaga aktualnego hasła usera — sama sesja (refresh token) nie wystarcza.
+     *
+     * @throws AuthBackendInvalidCredentialsException 401 złe / brak hasła
+     * @throws AuthBackendMfaAlreadyEnabledException  409
+     * @throws AuthBackendTooManyAttemptsException    429
+     * @throws AuthBackendException
+     */
+    public function requestMfaEnrollment(string $refreshToken, ?string $password): string
+    {
+        $payload = $this->request(
+            'POST',
+            '/api/auth/backend/mfa/enrollment/request',
+            options: $this->backendOptions(['refresh_token' => $refreshToken, 'password' => $password], null),
+        );
+
+        $url = $payload['enrollment_url'] ?? null;
+        if (!is_string($url) || '' === $url) {
+            throw new AuthBackendException('Niepoprawny payload enrollment (brak enrollment_url)');
+        }
+
+        return $url;
     }
 
     public function logout(string $refreshToken): void
@@ -189,6 +286,24 @@ final readonly class AuthBackendClient
         }
 
         if (401 === $status) {
+            $body = $this->decodeErrorBody($response);
+            $code = is_string($body['code'] ?? null) ? $body['code'] : null;
+            $message = is_string($body['error'] ?? null) && '' !== $body['error'] ? $body['error'] : null;
+
+            if ('mfa_required' === $code && is_string($body['mfa_token'] ?? null)) {
+                $methods = is_array($body['methods'] ?? null) ? array_values(array_filter($body['methods'], 'is_string')) : [];
+
+                throw new AuthBackendMfaRequiredException($body['mfa_token'], $methods, $message ?? 'Wymagany kod weryfikacji dwuetapowej.');
+            }
+            match ($code) {
+                'invalid_credentials' => throw new AuthBackendInvalidCredentialsException($message ?? 'Nieprawidłowy login lub hasło.'),
+                'mfa_invalid_code' => throw new AuthBackendMfaInvalidCodeException($message ?? 'Nieprawidłowy kod weryfikacyjny.'),
+                'mfa_code_reused' => throw new AuthBackendMfaInvalidCodeException($message ?? 'Ten kod został już użyty — poczekaj na następny w aplikacji.', AuthBackendMfaInvalidCodeException::CODE_REUSED),
+                'mfa_token_expired' => throw new AuthBackendMfaTokenExpiredException($message ?? 'Sesja weryfikacji wygasła. Zaloguj się ponownie.'),
+                'device_mismatch' => throw new AuthBackendDeviceMismatchException($message ?? 'Sesja została unieważniona — wykryto zmianę urządzenia.'),
+                default => null,
+            };
+
             throw new AuthBackendUnauthorizedException("auth server zwrócił 401 dla {$method} {$path}");
         }
 
@@ -197,13 +312,36 @@ final readonly class AuthBackendClient
             // (brak dostępu do panelu, konto disabled). Tekst z `error` w body
             // wystawiamy w exception.message, żeby LoginController mógł go
             // przekazać do frontu.
-            $reason = $this->extractErrorMessage($response) ?? 'Brak dostępu.';
+            $body = $this->decodeErrorBody($response);
+            $reason = is_string($body['error'] ?? null) && '' !== $body['error'] ? $body['error'] : 'Brak dostępu.';
+            $code = is_string($body['code'] ?? null) ? $body['code'] : null;
             $this->logger->info('AuthBackend: 403 z auth servera', [
                 'method' => $method,
                 'path' => $path,
                 'reason' => $reason,
+                'code' => $code,
             ]);
+            if ('mfa_enrollment_required' === $code) {
+                throw new AuthBackendMfaEnrollmentRequiredException(is_string($body['enrollment_url'] ?? null) ? $body['enrollment_url'] : null, $reason);
+            }
+            if ('mfa_step_up' === $code) {
+                throw new AuthBackendMfaStepUpException($reason);
+            }
             throw new AuthBackendForbiddenException($reason);
+        }
+
+        if (409 === $status && 'mfa_already_enabled' === ($this->decodeErrorBody($response)['code'] ?? null)) {
+            throw new AuthBackendMfaAlreadyEnabledException('Weryfikacja dwuetapowa jest już włączona.');
+        }
+
+        if (429 === $status) {
+            $retry = $response->getHeaders(false)['retry-after'][0] ?? null;
+            $body = $this->decodeErrorBody($response);
+
+            throw new AuthBackendTooManyAttemptsException(
+                is_numeric($retry) ? (int) $retry : null,
+                is_string($body['error'] ?? null) ? $body['error'] : 'Zbyt wiele prób. Spróbuj ponownie później.',
+            );
         }
 
         if ($status >= 400) {
@@ -227,18 +365,48 @@ final readonly class AuthBackendClient
         return $decoded;
     }
 
-    private function extractErrorMessage(\Symfony\Contracts\HttpClient\ResponseInterface $response): ?string
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeErrorBody(\Symfony\Contracts\HttpClient\ResponseInterface $response): array
     {
         try {
             /** @var array<string, mixed> $decoded */
             $decoded = $response->toArray(false);
         } catch (\Throwable) {
-            return null;
+            return [];
         }
 
-        $error = $decoded['error'] ?? null;
+        return $decoded;
+    }
 
-        return is_string($error) && '' !== $error ? $error : null;
+    /**
+     * Basic panelu + JSON body (+ `device` gdy przyszedł z przeglądarki) + nagłówki
+     * end-usera (X-Client-Ip / X-Client-User-Agent / X-Device-Fp).
+     *
+     * @param array<string, mixed>      $json
+     * @param array<string, mixed>|null $device
+     *
+     * @return array<string, mixed>
+     */
+    private function backendOptions(array $json, ?array $device): array
+    {
+        $device ??= $this->clientContext?->deviceFromBody();
+        if (null !== $device) {
+            $json['device'] = $device;
+        }
+
+        $options = [
+            'auth_basic' => [$this->authClientId, $this->authClientSecret],
+            'json' => array_filter($json, static fn (mixed $v): bool => null !== $v),
+        ];
+
+        $headers = $this->clientContext?->forwardedHeaders() ?? [];
+        if ([] !== $headers) {
+            $options['headers'] = $headers;
+        }
+
+        return $options;
     }
 
     private function safeBody(\Symfony\Contracts\HttpClient\ResponseInterface $response): string

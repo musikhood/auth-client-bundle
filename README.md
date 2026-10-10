@@ -281,7 +281,9 @@ security:
             # Login, logout i refresh muszą być publiczne — authenticator
             # nie może działać na /api/token/refresh, bo access_token jest
             # wtedy już nieważny.
-            pattern: ^/api/(login|logout|token/(refresh|invalidate))$
+            # 2FA (>= 0.7): /api/login/mfa, /api/session/mfa i /api/mfa/enrollment/request
+            # autoryzują się refresh tokenem weryfikowanym przez auth server — też tutaj.
+            pattern: ^/api/(login(/mfa)?|logout|token/(refresh|invalidate)|session/mfa|mfa/enrollment/request)$
             stateless: true
             security: false
 
@@ -300,7 +302,7 @@ security:
             entry_point: Musikhood\AuthClient\Security\JwtCookieAuthenticator
 
     access_control:
-        - { path: ^/api/(login|logout|token/(refresh|invalidate)), roles: PUBLIC_ACCESS }
+        - { path: ^/api/(login|logout|token/(refresh|invalidate)|session/mfa|mfa/enrollment/request), roles: PUBLIC_ACCESS }
         # Webhook inwalidacji usera (0s revocation) — własna autoryzacja przez
         # podpis JWT auth servera, NIE user auth. MUSI być przed catch-all ^/api.
         - { path: ^/api/auth-client/webhook/, roles: PUBLIC_ACCESS }
@@ -450,6 +452,8 @@ auth_client:
         # auth servera (BEARER 15 min, refresh_token 30 dni). Jeśli auth server
         # ma inne TTL, podbumpuj wersję paczki.
 
+    device_binding:
+        mode: observe            # off | observe | enforce (0.7) — porównanie claimu fph z X-Device-Fp
     circuit_breaker:
         failure_threshold: 3     # ile kolejnych błędów /me otwiera breaker
         open_seconds: 60         # ile sekund breaker jest otwarty
@@ -489,6 +493,44 @@ generowany / regenerowany / usuwany wyłącznie przez admina w panelu auth serve
 („niezmienny" = brak edycji wartości; zmiana = regeneracja, stary natychmiast
 martwy).
 
+## 2FA (TOTP) i wiązanie sesji z urządzeniem (>= 0.7)
+
+Wymaga auth servera z wydaniem 2FA. Front: `@musikhood-dev/auth-client >= 2.2`.
+Panel z polityką 2FA `off` (domyślnie) i user bez 2FA = zachowanie bajt w bajt jak w 0.6.
+
+- **`/api/login`** przepuszcza 401 `{code: "mfa_required", mfa_token, methods}` (BEZ ciasteczek) i 403
+  `{code: "mfa_enrollment_required", enrollment_url}`; zwykłe złe dane = 401 `"Nieprawidłowy login lub hasło."`
+  (+ `code: invalid_credentials`). 429 `too_many_attempts` + `Retry-After`.
+- **Per request** (`AuthValidationListener`): introspekcja zwraca 403 `mfa_step_up` / `mfa_enrollment_required`,
+  gdy sesja nie spełnia polityki 2FA panelu — bundle odpowiada 403 z tym samym `code` (bez czyszczenia ciasteczek,
+  wynik nie jest cache'owany). 403 `mfa_enrollment_required` z bramki NIE zawiera linku — front prosi o hasło i woła
+  `/api/mfa/enrollment/request` (link jest tylko w odpowiedzi `/api/login`).
+- **Dane end-usera dla auth servera**: przy `/api/auth/backend/*` bundle wysyła `X-Client-Ip`
+  (`Request::getClientIp()` — skonfiguruj `framework.trusted_proxies`!), `X-Client-User-Agent`, `X-Device-Fp` oraz
+  `device` z body przeglądarki. Auth server ufa im wyłącznie po poprawnym HTTP Basic panelu. Bez nich (stary bundle)
+  historia logowań widzi IP serwera konsumenta, a auth server pomija dla takich wywołań limit prób per IP (zostaje
+  limit IP+email) — inaczej userzy jednego serwisu blokowaliby się nawzajem.
+- **Fingerprint**: `JwtCookieAuthenticator` porównuje claim `fph` z nagłówkiem `X-Device-Fp` wg
+  `auth_client.device_binding.mode`: `off` | `observe` (default, tylko log) | `enforce` (401 `device_mismatch_recheck`
+  — także przy braku nagłówka na tokenie z `fph` → front robi refresh; auth server robi pełny scoring). Refresh odrzucony z `device_mismatch` → 401 + czyszczenie ciasteczek.
+- **CORS** backendu konsumenta musi dopuszczać nagłówek `X-Device-Fp` (`allow_headers`) i wystawiać `Retry-After`
+  (`expose_headers`) — auth-client 2.2 wysyła `X-Device-Fp` na każdym requeście.
+- **Firewall**: dodaj nowe trasy do publicznego firewalla `login` (patrz „Skonfiguruj security"). Recipe Flex
+  (`symfony-recipes`) jeszcze tego nie robi — trzeba zaktualizować ręcznie.
+- Nowe wyjątki `AuthBackendClient` (podklasy dotychczasowych — stary kod łapiący `AuthBackendUnauthorizedException` /
+  `AuthBackendForbiddenException` działa fail-closed): `AuthBackendMfaRequiredException`,
+  `AuthBackendMfaEnrollmentRequiredException`, `AuthBackendMfaStepUpException`, `AuthBackendMfaInvalidCodeException`,
+  `AuthBackendMfaTokenExpiredException`, `AuthBackendDeviceMismatchException`, `AuthBackendMfaAlreadyEnabledException`,
+  `AuthBackendTooManyAttemptsException`. Nowe metody: `loginMfa()`, `sessionMfa()`, `requestMfaEnrollment()`;
+  `login()` / `refresh()` przyjmują opcjonalne `$device`.
+
+```yaml
+# config/packages/auth_client.yaml
+auth_client:
+    device_binding:
+        mode: observe   # off | observe | enforce
+```
+
 ## Endpointy wystawiane przez paczkę
 
 | Metoda | Ścieżka | Opis |
@@ -497,6 +539,9 @@ martwy).
 | `POST` | `/api/logout` (alias `/api/token/invalidate`) | Czyści ciasteczka, unieważnia refresh token w auth serverze. |
 | `POST` | `/api/token/refresh` | Generuje nową parę ciasteczek z refresh tokena. |
 | `GET` | `/api/v1/user/me` | Zwraca dane zalogowanego użytkownika (`id`, `email`, `displayName`, `roles`, `disabled`). Czyta z lokalnej kopii — nie wymaga round-tripa do auth servera. |
+| `POST` | `/api/login/mfa` | (0.7) Drugi krok logowania 2FA: `{mfa_token, code \| recovery_code, remember_device?, device?}` → ciasteczka jak `/api/login`. Publiczny. |
+| `POST` | `/api/session/mfa` | (0.7) Step-up sesji po 403 `mfa_step_up`: `{code \| recovery_code, remember_device?, device?}` + ciasteczko `refresh_token` → nowe ciasteczka. Publiczny (autoryzacja refresh tokenem). |
+| `POST` | `/api/mfa/enrollment/request` | (0.7) Link do konfiguracji 2FA dla zalogowanego usera: `{password}` (wymagane aktualne hasło) + ciasteczko `refresh_token` → `{enrollment_url}`; 401 `invalid_credentials`, 409 `mfa_already_enabled`, 429. Publiczny (refresh token + hasło). |
 | `POST` | `/api/auth-client/webhook/user-invalidated` | Webhook inwalidacji usera (0s revocation). Autoryzacja podpisem JWT auth servera (nie user auth — wymaga `PUBLIC_ACCESS` w `access_control`). Patrz „Webhook inwalidacji". |
 
 ## Licencja

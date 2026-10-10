@@ -6,8 +6,11 @@ namespace Musikhood\AuthClient\EventListener;
 
 use Musikhood\AuthClient\Exception\AuthBackendException;
 use Musikhood\AuthClient\Exception\AuthBackendForbiddenException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaEnrollmentRequiredException;
+use Musikhood\AuthClient\Exception\AuthBackendMfaStepUpException;
 use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Musikhood\AuthClient\Http\AuthBackendClient;
+use Musikhood\AuthClient\Http\AuthErrorResponse;
 use Musikhood\AuthClient\Jwt\JwtClaims;
 use Musikhood\AuthClient\Security\JwtCookieAuthenticator;
 use Musikhood\AuthClient\Security\UserMirrorSyncer;
@@ -38,6 +41,11 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *      AccessDeniedHttpException. Front (paczka JS) klasyfikuje to jako
  *      PanelAccessDeniedError — BEZ refreshu, BEZ czyszczenia ciasteczek, BEZ
  *      broadcastu. Sesja na innych panelach zostaje nienaruszona.
+ *   3a. 403 z kodem 2FA (`mfa_step_up` / `mfa_enrollment_required`, polityka 2FA
+ *      panelu): sesja ŻYJE — odpowiadamy 403 `{error, code}` (bez linku konfiguracji)
+ *      (podmiana kontrolera, niezależnie od ExceptionListenera konsumenta).
+ *      Front (auth-client >= 2.2) pokazuje step-up / przekierowuje na konfigurację.
+ *      Wyniku NIE cache'ujemy — po step-upie następny request przechodzi.
  *   4. Timeout/5xx/transport: fail OPEN + log (NIE wylogowujemy przy awarii
  *      mastera). Po N błędach z rzędu otwieramy circuit breaker na
  *      `cb_open_seconds` i nie wołamy introspekcji wcale. Udane wywołanie resetuje.
@@ -51,6 +59,9 @@ final readonly class AuthValidationListener
     private const CACHE_KEY_VALIDATED = 'auth_client_validated_';
     private const CACHE_KEY_FAILURES = 'auth_client_cb_failures';
     private const CACHE_KEY_OPEN_UNTIL = 'auth_client_cb_open_until';
+
+    /** Endpointy 2FA bundla autoryzują się refresh tokenem — bramka 2FA nie może ich blokować. */
+    private const EXCLUDED_PATHS = '#^/api/(login(/mfa)?|logout|token/refresh|session/mfa|mfa/enrollment/request)$#';
 
     public function __construct(
         private AuthBackendClient $authBackendClient,
@@ -77,6 +88,10 @@ final readonly class AuthValidationListener
             return;
         }
 
+        if (1 === preg_match(self::EXCLUDED_PATHS, $request->getPathInfo())) {
+            return;
+        }
+
         if ($this->isCacheFresh($claims)) {
             return;
         }
@@ -89,6 +104,15 @@ final readonly class AuthValidationListener
 
         try {
             $userData = $this->authBackendClient->introspectJwt($accessToken);
+        } catch (AuthBackendMfaStepUpException $e) {
+            $event->setController(static fn () => AuthErrorResponse::create($e->getMessage(), AuthErrorResponse::CODE_MFA_STEP_UP, 403));
+
+            return;
+        } catch (AuthBackendMfaEnrollmentRequiredException $e) {
+            // Bez enrollment_url — link wydawany tylko po haśle (POST /api/mfa/enrollment/request).
+            $event->setController(static fn () => AuthErrorResponse::create($e->getMessage(), AuthErrorResponse::CODE_MFA_ENROLLMENT_REQUIRED, 403));
+
+            return;
         } catch (AuthBackendForbiddenException $e) {
             // 403: sesja ŻYJE, ale user nie ma dostępu do tego panelu. Rzucamy
             // AccessDeniedHttpException (HttpException — NIE security'owy

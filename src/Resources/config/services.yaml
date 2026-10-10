@@ -22,6 +22,7 @@ services:
             $circuitBreakerFailureThreshold: '%auth_client.circuit_breaker.failure_threshold%'
             $circuitBreakerOpenSeconds: '%auth_client.circuit_breaker.open_seconds%'
             $apiTokenHeader: '%auth_client.api_token.header%'
+            $deviceBindingMode: '%auth_client.device_binding.mode%'
 
     Musikhood\AuthClient\:
         resource: '../../*'

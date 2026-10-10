@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0]
+
+2FA (TOTP), wiązanie sesji z urządzeniem i kontekst klienta dla auth servera. Minor, wstecznie
+zgodny: auth server bez pola `code` w błędach / panel z polityką 2FA `off` = zachowanie jak w 0.6.
+
+### Added
+
+- **Trasy 2FA:** `POST /api/login/mfa` (drugi krok logowania → ciasteczka), `POST /api/session/mfa`
+  (step-up, refresh token z ciasteczka → nowe ciasteczka), `POST /api/mfa/enrollment/request`
+  (`{password}` w body — wymagane aktualne hasło, sama sesja nie wystarcza; → `{enrollment_url}`;
+  401 `invalid_credentials`, 409 `mfa_already_enabled`, 429). Wszystkie autoryzują się refresh tokenem —
+  dodaj je do publicznego firewalla `login` (README → „Skonfiguruj security").
+- **`AuthBackendClient`:** `loginMfa()`, `sessionMfa()`, `requestMfaEnrollment($refreshToken, $password)`; `login()` / `refresh()`
+  z opcjonalnym `$device`. Mapowanie `code` z body na wyjątki: `AuthBackendMfaRequiredException`
+  (`mfaToken`, `methods`), `AuthBackendMfaEnrollmentRequiredException` (`enrollmentUrl`),
+  `AuthBackendMfaStepUpException`, `AuthBackendMfaInvalidCodeException`, `AuthBackendMfaTokenExpiredException`,
+  `AuthBackendDeviceMismatchException`, `AuthBackendMfaAlreadyEnabledException`,
+  `AuthBackendTooManyAttemptsException` (`retryAfter`), `AuthBackendInvalidCredentialsException`
+  (401 `invalid_credentials`). Są podklasami dotychczasowych wyjątków
+  (fail-closed dla starego kodu).
+- **Kontekst end-usera:** `ClientContextProvider` — przy `/api/auth/backend/*` nagłówki `X-Client-Ip`,
+  `X-Client-User-Agent`, `X-Device-Fp` i `device` z body przeglądarki.
+- **`JwtClaims`:** `amr`, `sessionId` (`sid`), `deviceFpHash` (`fph`).
+- **Config `auth_client.device_binding.mode`** (`off` | `observe` | `enforce`, default `observe`):
+  `JwtCookieAuthenticator` porównuje `fph` z `X-Device-Fp`; w `enforce` 401 `device_mismatch_recheck` —
+  także gdy nagłówka brak przy tokenie z `fph` (skradziony BEARER nie działa po pominięciu nagłówka).
+- `AuthErrorResponse` — odpowiedzi `{error, code, ...}` zgodne z auth serverem.
+- 401 `mfa_code_reused` (poprawny kod z już użytego kroku czasowego) → `AuthBackendMfaInvalidCodeException`
+  z `errorCode = 'mfa_code_reused'` / `isReused()`; trasy 2FA bundla przekazują `code` frontowi 1:1
+  (auth-client: `MfaInvalidCodeError.reason === 'reused'`).
+- Uwaga: po konfiguracji 2FA z linku wydanego przez bundle auth server NIE loguje usera automatycznie
+  (ciasteczka bundla żyją na backendzie konsumenta) — user loguje się ponownie, już z kodem.
+
+### Changed
+
+- `/api/login`: 401 `mfa_required` (z `mfa_token`, bez ciasteczek) i 403 `mfa_enrollment_required`
+  (z `enrollment_url`) przechodzą do frontu; zwykłe 401 nadal „Nieprawidłowy login lub hasło." (+ `code`).
+  429 `too_many_attempts` + `Retry-After`.
+- `AuthValidationListener`: introspekcja 403 `mfa_step_up` / `mfa_enrollment_required` → odpowiedź 403
+  z tym samym `code` (bez linku konfiguracji, bez czyszczenia ciasteczek, bez cache). Pomija trasy 2FA bundla.
+- `/api/token/refresh`: 401 `device_mismatch` → 401 z `code` + czyszczenie ciasteczek; refresh forwarduje `device`.
+- `AuthBackendUnauthorizedException` / `AuthBackendForbiddenException` nie są już `final` (podklasy 2FA).
+- `LoginController` deleguje wydanie sesji do `AuthSessionIssuer` (zachowanie bez zmian).
+
+### Recipe Flex (`symfony-recipes`) — do zrobienia osobno
+
+- `config/packages/auth_client.yaml`: dopisać sekcję `device_binding: { mode: observe }`.
+- Instrukcja security (post-install message): wzorzec firewalla `login` i `access_control`
+  z trasami `login/mfa`, `session/mfa`, `mfa/enrollment/request`.
+- Notatka o CORS: `allow_headers` += `X-Device-Fp`, `expose_headers` += `Retry-After`.
+
 ## [0.4.0]
 
 Panel-agnostyczne SSO cross-panel. Te same ciasteczka (BEARER + refresh_token)

@@ -6,6 +6,8 @@ namespace Musikhood\AuthClient\Security;
 
 use Musikhood\AuthClient\Cookie\AuthCookieFactory;
 use Musikhood\AuthClient\Exception\InvalidJwtException;
+use Musikhood\AuthClient\Http\AuthErrorResponse;
+use Musikhood\AuthClient\Http\ClientContextProvider;
 use Musikhood\AuthClient\Jwt\JwtClaims;
 use Musikhood\AuthClient\Jwt\JwtValidator;
 use Psr\Log\LoggerInterface;
@@ -50,6 +52,7 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
         private readonly UserTokenVersionStore $tokenVersionStore,
         private readonly LoggerInterface $logger,
         private readonly string $apiTokenHeader,
+        private readonly string $deviceBindingMode = 'observe',
     ) {}
 
     public function supports(Request $request): ?bool
@@ -108,6 +111,8 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
             throw new CustomUserMessageAuthenticationException('Token został unieważniony.');
         }
 
+        $this->checkDeviceBinding($request, $claims);
+
         $this->stashContext($request, $accessToken, $claims);
 
         $user = $this->userMirrorSyncer->upsert($claims);
@@ -135,6 +140,12 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
             'path' => $request->getPathInfo(),
         ]);
 
+        if ($exception instanceof DeviceMismatchAuthenticationException) {
+            // Fingerprint ≠ claim `fph` (mode enforce): front (auth-client >= 2.2)
+            // robi zwykły refresh, a auth server wykonuje pełny scoring urządzenia.
+            return AuthErrorResponse::create('Wymagane odświeżenie sesji.', AuthErrorResponse::CODE_DEVICE_MISMATCH_RECHECK, Response::HTTP_UNAUTHORIZED);
+        }
+
         // NIE czyścimy tu ciasteczek. Wygaśnięcie access tokena to typowa
         // sytuacja (co ~15 min). Refresh_token musi przeżyć, żeby front mógł
         // wymienić go na nowy BEARER przez /api/token/refresh.
@@ -157,6 +168,43 @@ final class JwtCookieAuthenticator extends AbstractAuthenticator implements Auth
             ['error' => 'Brak autoryzacji.'],
             Response::HTTP_UNAUTHORIZED,
         );
+    }
+
+    /**
+     * Porównanie claimu `fph` (hash fingerprintu sesji) z nagłówkiem `X-Device-Fp`
+     * przeglądarki wg `auth_client.device_binding.mode`:
+     *   - off      — nic,
+     *   - observe  — tylko log (default),
+     *   - enforce  — 401 `device_mismatch_recheck`, także gdy nagłówka BRAK (skradziony
+     *                BEARER nie może działać po prostu przez pominięcie X-Device-Fp).
+     * Token bez `fph` (sesja niezwiązana / stary klient) → nie sprawdzamy; w observe brak
+     * nagłówka nie jest logowany.
+     */
+    private function checkDeviceBinding(Request $request, JwtClaims $claims): void
+    {
+        if ('off' === $this->deviceBindingMode || null === $claims->deviceFpHash) {
+            return;
+        }
+
+        $raw = $request->headers->get(ClientContextProvider::HEADER_DEVICE_FP);
+        $header = null !== $raw && '' !== trim($raw) ? strtolower(trim($raw)) : null;
+        if (null !== $header && hash_equals($claims->deviceFpHash, $header)) {
+            return;
+        }
+        if (null === $header && 'enforce' !== $this->deviceBindingMode) {
+            return;
+        }
+
+        $this->logger->info('enforce' === $this->deviceBindingMode ? 'auth_client_device_mismatch_enforced' : 'auth_client_device_mismatch_observed', [
+            'user_id' => $claims->userId->toString(),
+            'sid' => $claims->sessionId,
+            'path' => $request->getPathInfo(),
+            'missing_header' => null === $header,
+        ]);
+
+        if ('enforce' === $this->deviceBindingMode) {
+            throw new DeviceMismatchAuthenticationException('Fingerprint urządzenia nie zgadza się z sesją.');
+        }
     }
 
     /**

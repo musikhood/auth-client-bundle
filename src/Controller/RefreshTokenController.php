@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Musikhood\AuthClient\Controller;
 
 use Musikhood\AuthClient\Cookie\AuthCookieFactory;
+use Musikhood\AuthClient\Exception\AuthBackendDeviceMismatchException;
 use Musikhood\AuthClient\Exception\AuthBackendException;
 use Musikhood\AuthClient\Exception\AuthBackendForbiddenException;
 use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Musikhood\AuthClient\Http\AuthBackendClient;
+use Musikhood\AuthClient\Http\AuthErrorResponse;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -20,7 +22,9 @@ use Symfony\Component\Routing\Attribute\Route;
  * Odświeża ciasteczka BEARER + refresh_token. Wywoływane przez interceptor
  * axiosa na froncie po dostaniu 401.
  *
- * Body żądania jest puste. Refresh token niesie przeglądarka w ciasteczku.
+ * Refresh token niesie przeglądarka w ciasteczku. Body może zawierać `device`
+ * (auth-client >= 2.2) — idzie do auth servera razem z X-Client-Ip /
+ * X-Client-User-Agent / X-Device-Fp (scoring urządzenia sesji).
  *
  * Jeśli auth server odpowie 401, czyścimy oba ciasteczka. Front przechodzi
  * wtedy do swojej procedury wylogowania.
@@ -43,6 +47,13 @@ class RefreshTokenController extends AbstractController
 
         try {
             $tokens = $this->authBackendClient->refresh($refreshToken);
+        } catch (AuthBackendDeviceMismatchException $e) {
+            // Sesja związana z innym urządzeniem została odwołana na auth serverze
+            // (DEVICE_BINDING_MODE=enforce) — czyścimy jak każdą martwą sesję.
+            $response = AuthErrorResponse::create($e->getMessage(), AuthErrorResponse::CODE_DEVICE_MISMATCH, Response::HTTP_UNAUTHORIZED);
+            $this->cookieFactory->clear($response);
+
+            return $response;
         } catch (AuthBackendForbiddenException $e) {
             // 403 = brak dostępu do panelu (sesja ŻYJE). NIGDY nie czyścimy
             // ciasteczek przy 403 — to nie jest nieważna sesja, tylko brak

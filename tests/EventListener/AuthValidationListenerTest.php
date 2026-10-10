@@ -94,11 +94,54 @@ final class AuthValidationListenerTest extends TestCase
      * callable odpalający __invoke na świeżym ControllerEvent. Zwracamy callable
      * (nie wywołujemy od razu), żeby expectException objął tylko wywołanie.
      */
+    public function testMfaStepUpRespondsWith403CodeWithoutException(): void
+    {
+        [$run, $event] = $this->dispatchWithEvent(new MockResponse(
+            (string) json_encode(['error' => 'Wymagana weryfikacja', 'code' => 'mfa_step_up']),
+            ['http_code' => 403],
+        ));
+        $run();
+
+        $response = ($event->getController())();
+        self::assertInstanceOf(\Symfony\Component\HttpFoundation\JsonResponse::class, $response);
+        self::assertSame(403, $response->getStatusCode());
+        self::assertSame(['error' => 'Wymagana weryfikacja', 'code' => 'mfa_step_up'], json_decode((string) $response->getContent(), true));
+        self::assertSame([], $response->headers->getCookies());
+    }
+
+    public function testMfaEnrollmentRespondsWithCodeOnly(): void
+    {
+        [$run, $event] = $this->dispatchWithEvent(new MockResponse(
+            (string) json_encode(['error' => 'Skonfiguruj', 'code' => 'mfa_enrollment_required']),
+            ['http_code' => 403],
+        ));
+        $run();
+
+        $body = json_decode((string) ($event->getController())()->getContent(), true);
+        self::assertSame(['error' => 'Skonfiguruj', 'code' => 'mfa_enrollment_required'], $body);
+    }
+
+    public function testMfaEndpointsSkipIntrospection(): void
+    {
+        // Brak odpowiedzi w MockHttpClient — gdyby listener zawołał introspekcję, test by padł.
+        [$run] = $this->dispatchWithEvent(null, path: '/api/session/mfa');
+        $run();
+        $this->addToAssertionCount(1);
+    }
+
     private function dispatch(MockResponse $introspectResponse, ?UuidInterface $userId = null): callable
+    {
+        return $this->dispatchWithEvent($introspectResponse, $userId)[0];
+    }
+
+    /**
+     * @return array{0: callable, 1: ControllerEvent}
+     */
+    private function dispatchWithEvent(?MockResponse $introspectResponse, ?UuidInterface $userId = null, string $path = '/api/products'): array
     {
         $userId ??= Uuid::uuid4();
 
-        $http = new MockHttpClient([$introspectResponse]);
+        $http = new MockHttpClient(null !== $introspectResponse ? [$introspectResponse] : []);
         $backendClient = new AuthBackendClient(
             $http,
             new NullLogger(),
@@ -135,7 +178,7 @@ final class AuthValidationListenerTest extends TestCase
             tokenVersion: 1,
         );
 
-        $request = new Request();
+        $request = Request::create($path);
         $request->attributes->set(JwtCookieAuthenticator::ATTR_ACCESS_TOKEN, 'jwt-access');
         $request->attributes->set(JwtCookieAuthenticator::ATTR_CLAIMS, $claims);
 
@@ -146,6 +189,6 @@ final class AuthValidationListenerTest extends TestCase
             HttpKernelInterface::MAIN_REQUEST,
         );
 
-        return static fn () => $listener($event);
+        return [static fn () => $listener($event), $event];
     }
 }
