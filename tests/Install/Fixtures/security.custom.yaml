@@ -1,0 +1,15 @@
+security:
+    providers:
+        app_users:
+            entity: { class: App\Entity\User, property: email }
+    firewalls:
+        dev:
+            pattern: ^/(_(profiler|wdt)|css|images|js)/
+            security: false
+        main:
+            pattern: ^/
+            lazy: true
+            provider: app_users
+            form_login: ~
+    access_control:
+        - { path: ^/admin, roles: ROLE_ADMIN }

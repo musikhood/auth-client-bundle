@@ -1,0 +1,5 @@
+security:
+    firewalls:
+        api:
+            host: api\.example\.com
+            security: false

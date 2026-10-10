@@ -1,0 +1,68 @@
+security:
+    providers:
+        # Stateless provider — Authenticator returns the User directly.
+        # No source to reload from; nothing here for Symfony to call.
+        in_memory:
+            memory: ~
+
+    firewalls:
+        dev:
+            pattern: ^/(_(profiler|wdt)|css|images|js)/
+            security: false
+
+        login:
+            # Login, logout and refresh are public — the authenticator must not
+            # touch them (refresh runs while the access_token is already invalid).
+            # 2FA routes of the bundle (>= 0.7) authorize themselves with the
+            # refresh_token cookie verified by the auth server (session/mfa,
+            # mfa/enrollment/request) or the mfa_token (login/mfa) — the JWT gate
+            # would answer 403 mfa_step_up on the step-up itself.
+            pattern: ^/api/(login(/mfa)?|logout|token/(refresh|invalidate)|session/mfa|mfa/enrollment/request)$
+            stateless: true
+            security: false
+
+        api:
+            pattern: ^/api
+            stateless: true
+            custom_authenticators:
+                # ApiTokenAuthenticator PRZED JwtCookieAuthenticator: jego
+                # supports() = true tylko gdy nagłówek X-Api-Token obecny, a
+                # JwtCookie ma supports()=null (próbuje zawsze). Z headerem
+                # wygrywa token maszynowy; bez niego stary cookie flow bez zmian.
+                - Musikhood\AuthClient\Security\ApiTokenAuthenticator
+                - Musikhood\AuthClient\Security\JwtCookieAuthenticator
+            entry_point: Musikhood\AuthClient\Security\JwtCookieAuthenticator
+
+    role_hierarchy:
+        ROLE_ADMIN:
+            [
+                ROLE_SYSTEM,
+                ROLE_EDIT,
+                ROLE_USER,
+                ROLE_AI,
+                ROLE_PUBLISH,
+                ROLE_RESCHEDULE,
+                ROLE_ASSIGN,
+                ROLE_QUEUE,
+                ROLE_FTP,
+            ]
+        ROLE_SYSTEM: ROLE_USER
+        ROLE_QUEUE: ROLE_USER
+        ROLE_FTP: ROLE_USER
+        ROLE_RESCHEDULE: ROLE_USER
+        ROLE_ASSIGN: ROLE_USER
+        ROLE_PUBLISH: ROLE_USER
+        ROLE_EDIT: ROLE_USER
+        ROLE_AI: ROLE_USER
+
+    access_control:
+        # Same list as the `login` firewall (anchored) + API docs.
+        - { path: ^/api/((login(/mfa)?|logout|token/(refresh|invalidate)|session/mfa|mfa/enrollment/request)$|doc), roles: PUBLIC_ACCESS }
+        # Webhook inwalidacji usera od auth servera (0s revocation). Endpoint ma
+        # własną walidację kryptograficzną przez WebhookJwtValidator w controllerze
+        # paczki (podpisany JWT mastera, aud=panel_id PIM) — model jak weryfikacja
+        # webhooków Stripe/GitHub. JwtCookieAuthenticator paczki ma supports()
+        # returning null (lazy mode), więc PUBLIC_ACCESS pomija go dla tej ścieżki.
+        # MUSI być przed catch-all ^/api (Symfony: first-match-wins).
+        - { path: ^/api/auth-client/webhook/, roles: PUBLIC_ACCESS }
+        - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }

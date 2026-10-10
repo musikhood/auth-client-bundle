@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0]
+
+Instalacja „bez konfiguracji”: integrator podaje tylko dane panelu w env (`AUTH_PANEL_ID`, `AUTH_CLIENT_ID`,
+`AUTH_CLIENT_SECRET`), resztę robią `auth-client:install` i `auth-client:doctor`. Minor, wstecznie zgodny dla
+aplikacji z własnym repozytorium userów i pełną konfiguracją (PIM 0.7 działa bez zmian w kodzie).
+
+### Added
+
+- **Tryb bezstanowy (domyślny):** bez implementacji `PanelUserRepositoryInterface` w kontenerze bundle używa
+  wbudowanego `Security\Stateless\StatelessPanelUserRepository` + `StatelessPanelUser` — bez encji, tabeli
+  i migracji. User z JWT + introspekcji; snapshot w `cache.app` (TTL 24 h), więc role zmienione w auth-panelu
+  propagują się w ≤ `validation_cache_ttl` jak przy tabeli. Mapa tożsamości per request czyszczona przez
+  `kernel.reset` (worker mode). Własne repozytorium (`#[AsAlias]`) → działa jak dotąd.
+- **`bin/console auth-client:install`** (`--dry-run`, `--yes`, `--no-doctor`): `.env` (klucze `AUTH_*`
+  i `SYMFONY_TRUSTED_PROXIES=private_ranges`, tylko gdy nie są zdefiniowane w `.env` ani w środowisku), import
+  tras, `security.yaml` (brak pliku / domyślny Symfony → pełna konfiguracja; własne firewalle → analiza pokrycia,
+  przy braku — dokładny fragment do wklejenia, plik nienaruszony), `nelmio_cors.yaml` (credentials,
+  `X-Device-Fp`, `Retry-After`; edycja weryfikowana ponownym parsowaniem), `framework.trusted_proxies` dla
+  Symfony < 7.2. Pokazuje diff i pyta przed zapisem; drugi run nic nie zmienia; na końcu uruchamia doctor.
+- **`bin/console auth-client:doctor`** (`--access-token`): ciasteczka — `same_site=none` bez `secure` = ostrzeżenie,
+  `none` przy froncie w tej samej domenie co API = podpowiedź „lax wystarczy”; env, osiągalność auth servera (JWKS), poprawność
+  `client_id`/`client_secret` (introspekcja bez tokenu — bez zmian w API Core), trasy 2FA na auth serverze,
+  zgodność `panel_id` z klientem (z tokenem), pokrycie tras w security (żywa konfiguracja), CORS, ciasteczka,
+  trusted proxies, wersja. ✔ / ! / ✘ z podpowiedzią; exit code 1 przy błędzie; bez wypisywania sekretów.
+- `Routing\PublicRoutes` — jedno źródło listy tras publicznych (install, doctor, `AuthValidationListener`, testy).
+- `AuthCookieFactory::cookieDomain()`, `isSecure()`, `sameSite()` (dla doctora).
+- Zależność `symfony/console`.
+
+### Changed
+
+- **Domyślne wartości konfiguracji** — `config/packages/auth_client.yaml` jest opcjonalny:
+  `base_url` = env `AUTH_BASE_URL`, bez niego `https://editor-v3-backend.vitkac.com` (produkcja);
+  `panel_id` / `client_id` / `client_secret` = `%env(AUTH_PANEL_ID|AUTH_CLIENT_ID|AUTH_CLIENT_SECRET)%`;
+  `cookie.domain` = `%env(default::AUTH_COOKIE_DOMAIN)%`; `cookie.same_site` bez zmian `lax`, `secure` bez zmian
+  `true`. Aplikacje ustawiające te klucze jawnie (PIM) — bez zmian. `same_site: none` ustaw tylko, gdy front i API
+  są w różnych domenach rejestrowalnych (subdomeny jednej domeny, np. `pim.vitkac.com` / `pim-api.vitkac.com`,
+  działają z `lax`); wymaga `secure: true`.
+- `AuthCookieFactory`: pusta domena (np. nieustawione `AUTH_COOKIE_DOMAIN`) = ciasteczko host-only (wcześniej
+  pusty atrybut `Domain=`).
+- `AuthValidationListener` pomija wszystkie trasy z `PublicRoutes` (doszły `/api/token/invalidate` i webhook —
+  na nich i tak nie ma sesji JWT).
+
+### Removed
+
+- `Security\MissingPanelUserRepository` (stub rzucający wyjątek) — zastąpiony trybem bezstanowym.
+
+### Recipe Flex (`symfony-recipes` 0.8)
+
+- `auth_client.yaml` z 4 liniami env, `.env` z prod `AUTH_BASE_URL` i pustymi danymi panelu, post-install:
+  „uzupełnij env → `auth-client:install` → `auth-client:doctor`”. Endpoint Flex jest opcjonalny (bez niego
+  `auth-client:install` dopisuje trasy i `.env`).
+
 ## [0.7.0]
 
 2FA (TOTP), wiązanie sesji z urządzeniem i kontekst klienta dla auth servera. Minor, wstecznie

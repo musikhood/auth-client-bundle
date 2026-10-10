@@ -12,6 +12,7 @@ use Musikhood\AuthClient\Exception\AuthBackendUnauthorizedException;
 use Musikhood\AuthClient\Http\AuthBackendClient;
 use Musikhood\AuthClient\Http\AuthErrorResponse;
 use Musikhood\AuthClient\Jwt\JwtClaims;
+use Musikhood\AuthClient\Routing\PublicRoutes;
 use Musikhood\AuthClient\Security\JwtCookieAuthenticator;
 use Musikhood\AuthClient\Security\UserMirrorSyncer;
 use Psr\Cache\CacheItemPoolInterface;
@@ -60,9 +61,6 @@ final readonly class AuthValidationListener
     private const CACHE_KEY_FAILURES = 'auth_client_cb_failures';
     private const CACHE_KEY_OPEN_UNTIL = 'auth_client_cb_open_until';
 
-    /** Endpointy 2FA bundla autoryzują się refresh tokenem — bramka 2FA nie może ich blokować. */
-    private const EXCLUDED_PATHS = '#^/api/(login(/mfa)?|logout|token/refresh|session/mfa|mfa/enrollment/request)$#';
-
     public function __construct(
         private AuthBackendClient $authBackendClient,
         private UserMirrorSyncer $userMirrorSyncer,
@@ -88,7 +86,9 @@ final readonly class AuthValidationListener
             return;
         }
 
-        if (1 === preg_match(self::EXCLUDED_PATHS, $request->getPathInfo())) {
+        // Public bundle routes (login, refresh, 2FA steps…) authorize themselves —
+        // the introspection / 2FA gate must never block them.
+        if (PublicRoutes::isPublic($request->getPathInfo())) {
             return;
         }
 
