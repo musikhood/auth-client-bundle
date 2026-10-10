@@ -34,15 +34,36 @@ final readonly class AuthCookieFactory
     /** Czas życia ciasteczka refresh_token (sekundy). Spójne z REFRESH_TOKEN_TTL na auth serverze. */
     private const REFRESH_COOKIE_LIFETIME_SECONDS = 2592000;
 
+    private ?string $cookieDomain;
+
     public function __construct(
         private string $accessCookieName,
         private string $refreshCookieName,
         private string $cookiePath,
-        private ?string $cookieDomain,
+        ?string $cookieDomain,
         private bool $cookieSecure,
         private bool $cookieHttpOnly,
         private string $cookieSameSite,
-    ) {}
+    ) {
+        // An unset optional env (`%env(default::AUTH_COOKIE_DOMAIN)%`) resolves to
+        // null or ''. Both mean a host-only cookie (no Domain attribute).
+        $this->cookieDomain = null === $cookieDomain || '' === trim($cookieDomain) ? null : trim($cookieDomain);
+    }
+
+    public function cookieDomain(): ?string
+    {
+        return $this->cookieDomain;
+    }
+
+    public function isSecure(): bool
+    {
+        return $this->cookieSecure;
+    }
+
+    public function sameSite(): string
+    {
+        return strtolower($this->cookieSameSite);
+    }
 
     public function applyTokens(Response $response, TokenPair $tokens): void
     {

@@ -1,0 +1,16 @@
+nelmio_cors:
+    defaults:
+        allow_credentials: true
+        origin_regex: true
+        allow_origin: ["%env(CORS_ALLOW_ORIGIN)%"]
+        # X-Device-Fp: device fingerprint hash sent by auth-client >= 2.2 on every request.
+        allow_headers: ['Content-Type', 'Accept', 'X-Requested-With', 'Authorization', 'X-Request-Id', 'X-Device-Fp']
+        allow_methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+        # The browser can only READ a response header that is explicitly exposed, so
+        # without this the front would never see the X-Request-Id it needs to quote a
+        # failed request back to us. Retry-After: 429 too_many_attempts from the 2FA routes.
+        expose_headers: ['X-Request-Id', 'Retry-After']
+        max_age: 3600
+    paths:
+        "^/": null
+        

@@ -22,6 +22,8 @@ final class AuthClientExtension extends Extension
     {
         $config = $this->processConfiguration(new Configuration(), $configs);
 
+        // Fallback of `%env(default:auth_client.default_base_url:AUTH_BASE_URL)%`.
+        $container->setParameter('auth_client.default_base_url', Configuration::DEFAULT_BASE_URL);
         $container->setParameter('auth_client.base_url', $config['base_url']);
         $container->setParameter('auth_client.panel_id', $config['panel_id']);
         $container->setParameter('auth_client.client_id', $config['client_id']);
@@ -32,8 +34,8 @@ final class AuthClientExtension extends Extension
         $container->setParameter('auth_client.cookie.access_name', $config['cookie']['access_name']);
         $container->setParameter('auth_client.cookie.refresh_name', $config['cookie']['refresh_name']);
         $container->setParameter('auth_client.cookie.path', $config['cookie']['path']);
-        // Pusty string traktujemy jako null (host-only). Pomocne gdy
-        // konsument przekazuje wartość przez env i nie chce ustawiać domeny.
+        // Empty string = null (host-only). An env placeholder is resolved at
+        // runtime — AuthCookieFactory normalizes an empty value there.
         $container->setParameter('auth_client.cookie.domain', '' === $config['cookie']['domain'] ? null : $config['cookie']['domain']);
         $container->setParameter('auth_client.cookie.secure', $config['cookie']['secure']);
         $container->setParameter('auth_client.cookie.http_only', $config['cookie']['http_only']);

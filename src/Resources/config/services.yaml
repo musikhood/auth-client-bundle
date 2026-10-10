@@ -28,9 +28,14 @@ services:
         resource: '../../*'
         exclude:
             - '../../{AuthClientBundle.php,DependencyInjection,Contract,Dto,Exception,Resources}'
-            # Stub-klasa rejestrowana ręcznie przez EnsurePanelUserRepositoryPass
-            # tylko gdy konsument nie podpiął własnej implementacji repo.
-            - '../../Security/MissingPanelUserRepository.php'
+            # Value object, not a service.
+            - '../../Security/Stateless/StatelessPanelUser.php'
+            # Static helper, not a service.
+            - '../../Routing'
+            # Value objects / enums / static helpers of the install & doctor commands.
+            - '../../Install/{ChangeKind,PlannedChange,LineDiff,EnvFile}.php'
+            - '../../Doctor/{CheckResult,CheckStatus}.php'
+            - '../../Doctor/SecurityCoverage/FirewallSnapshot.php'
 
     # Controllers must be registered with the controller tag so AbstractController
     # gets its container set and #[Route] attributes are picked up by the

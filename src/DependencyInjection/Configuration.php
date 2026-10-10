@@ -13,6 +13,9 @@ use Symfony\Component\Config\Definition\ConfigurationInterface;
  */
 final class Configuration implements ConfigurationInterface
 {
+    /** Production API Core (auth server) — editor_v3_backend k8s/prod ingress. */
+    public const DEFAULT_BASE_URL = 'https://editor-v3-backend.vitkac.com';
+
     public function getConfigTreeBuilder(): TreeBuilder
     {
         $treeBuilder = new TreeBuilder('auth_client');
@@ -23,25 +26,28 @@ final class Configuration implements ConfigurationInterface
 
         $rootNode
             ->children()
+                // Zero-config: every value comes from env by default, so the bundle
+                // works (and the container compiles) without config/packages/auth_client.yaml.
+                // A missing env fails only at runtime — `auth-client:doctor` reports it.
                 ->scalarNode('base_url')
-                    ->isRequired()
+                    ->defaultValue('%env(default:auth_client.default_base_url:AUTH_BASE_URL)%')
                     ->cannotBeEmpty()
-                    ->info('Auth server base URL, np. https://auth.example.com')
+                    ->info('Auth server base URL (API Core). Domyślnie env AUTH_BASE_URL, bez niego produkcja.')
                 ->end()
                 ->scalarNode('panel_id')
-                    ->isRequired()
+                    ->defaultValue('%env(AUTH_PANEL_ID)%')
                     ->cannotBeEmpty()
-                    ->info('Identyfikator panelu (UUID) wystawiony przez auth server.')
+                    ->info('Identyfikator panelu (UUID) wystawiony przez auth server. Domyślnie env AUTH_PANEL_ID.')
                 ->end()
                 ->scalarNode('client_id')
-                    ->isRequired()
+                    ->defaultValue('%env(AUTH_CLIENT_ID)%')
                     ->cannotBeEmpty()
-                    ->info('Backend client_id do HTTP Basic auth na endpointach /api/auth/backend/*.')
+                    ->info('Backend client_id do HTTP Basic auth na endpointach /api/auth/backend/*. Domyślnie env AUTH_CLIENT_ID.')
                 ->end()
                 ->scalarNode('client_secret')
-                    ->isRequired()
+                    ->defaultValue('%env(AUTH_CLIENT_SECRET)%')
                     ->cannotBeEmpty()
-                    ->info('Backend client_secret do HTTP Basic auth na endpointach /api/auth/backend/*.')
+                    ->info('Backend client_secret do HTTP Basic auth na endpointach /api/auth/backend/*. Domyślnie env AUTH_CLIENT_SECRET.')
                 ->end()
                 ->integerNode('jwks_cache_ttl')
                     ->defaultValue(3600)
@@ -60,13 +66,19 @@ final class Configuration implements ConfigurationInterface
                         ->scalarNode('refresh_name')->defaultValue('refresh_token')->cannotBeEmpty()->end()
                         ->scalarNode('path')->defaultValue('/')->cannotBeEmpty()->end()
                         ->scalarNode('domain')
-                            ->defaultNull()
+                            // Optional env: empty / unset = host-only cookie.
+                            ->defaultValue('%env(default::AUTH_COOKIE_DOMAIN)%')
                             ->info('Domena ciasteczka. Null lub puste = host bieżącego żądania (default). Ustaw np. .example.com żeby ciasteczka działały na wszystkich subdomenach (front i backend pod różnymi subdomenami tej samej parent domain).')
                         ->end()
                         ->booleanNode('secure')->defaultTrue()->end()
                         ->booleanNode('http_only')->defaultTrue()->end()
                         ->enumNode('same_site')
                             ->values(['lax', 'strict', 'none'])
+                            // SameSite is evaluated per registrable domain ("site"), not per host:
+                            // a front and an API on subdomains of the same domain
+                            // (pim.vitkac.com / pim-api.vitkac.com, or localhost on different
+                            // ports) are same-site and work with `lax`. Use `none` only when the
+                            // front and the API live on different domains (requires secure=true).
                             ->defaultValue('lax')
                         ->end()
                         // TTL ciasteczek jest hardcoded w AuthCookieFactory (BEARER 15 min, refresh_token 30 dni)
