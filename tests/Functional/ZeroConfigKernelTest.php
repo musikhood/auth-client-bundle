@@ -14,6 +14,7 @@ use Musikhood\AuthClient\Security\Stateless\StatelessPanelUserRepository;
 use Musikhood\AuthClient\Tests\Install\InstallTestCase;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\DependencyInjection\Exception\EnvNotFoundException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
@@ -64,7 +65,6 @@ final class ZeroConfigKernelTest extends InstallTestCase
         self::assertTrue($cookies->isSecure());
         self::assertSame('lax', $cookies->sameSite(), 'BC with 0.7: same-site front/API (subdomains of one domain) work with lax');
         self::assertNull($cookies->cookieDomain(), 'AUTH_COOKIE_DOMAIN unset → host-only');
-        self::assertSame('https://editor-v3-backend.vitkac.com', Configuration::DEFAULT_BASE_URL);
     }
 
     public function testWithoutAnyBundleConfigEverythingComesFromEnv(): void
@@ -79,14 +79,21 @@ final class ZeroConfigKernelTest extends InstallTestCase
             $this->kernel->boot();
             $container = $this->kernel->getContainer();
 
-            self::assertSame('https://editor-v3-backend.vitkac.com', $container->getParameter('auth_client.base_url'), 'AUTH_BASE_URL unset → production');
             self::assertSame('panel-backend', $container->getParameter('auth_client.client_id'));
+            // Required since 0.8.1 — no built-in auth server address to fall back to.
+            $error = null;
+            try {
+                $container->getParameter('auth_client.base_url');
+            } catch (\Throwable $e) {
+                $error = $e;
+            }
+            self::assertInstanceOf(EnvNotFoundException::class, $error, 'AUTH_BASE_URL unset must not fall back to a default');
 
-            $_SERVER['AUTH_BASE_URL'] = 'https://auth-dev.example';
+            $_SERVER['AUTH_BASE_URL'] = 'https://auth-dev.example.com';
             $this->kernel->shutdown();
             $this->kernel = new TestKernel($this->projectDir, withBundleConfig: false);
             $this->kernel->boot();
-            self::assertSame('https://auth-dev.example', $this->kernel->getContainer()->getParameter('auth_client.base_url'));
+            self::assertSame('https://auth-dev.example.com', $this->kernel->getContainer()->getParameter('auth_client.base_url'));
         } finally {
             unset($_SERVER['AUTH_PANEL_ID'], $_SERVER['AUTH_CLIENT_ID'], $_SERVER['AUTH_CLIENT_SECRET'], $_SERVER['AUTH_BASE_URL']);
         }
@@ -133,6 +140,8 @@ final class ZeroConfigKernelTest extends InstallTestCase
         self::assertSame(0, $exit, $display);
         self::assertStringContainsString('✔ Trasy publiczne bundla', $display);
         self::assertStringContainsString('✔ Dane klienta', $display);
+        self::assertStringContainsString('Instrukcja integracji (dla agenta AI): ', $display);
+        self::assertStringContainsString('AI_INTEGRATION.md', $display);
         self::assertStringNotContainsString('secret', strtolower(str_replace(['client_secret', 'AUTH_CLIENT_SECRET'], '', $display)));
     }
 
@@ -148,6 +157,7 @@ final class ZeroConfigKernelTest extends InstallTestCase
         $display = $tester->getDisplay();
         self::assertStringContainsString('[zmienię] config/packages/security.yaml', $display);
         self::assertStringContainsString('dry-run', $display);
+        self::assertStringContainsString('AI_INTEGRATION.md', $display);
         self::assertSame($before, $this->snapshotWithoutVar());
     }
 

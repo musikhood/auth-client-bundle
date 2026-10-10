@@ -1,9 +1,9 @@
 {
     "name": "musikhood/auth-client-bundle",
-    "description": "Symfony bundle for editor_v3 cookie-based auth (BEARER + refresh_token, JWT/JWKS validation, user mirror).",
+    "description": "Symfony bundle for cookie-based auth against a central auth server (BEARER + refresh_token, JWT/JWKS validation, 2FA, user mirror).",
     "type": "symfony-bundle",
     "license": "MIT",
-    "keywords": ["symfony", "symfony-bundle", "auth", "jwt", "jwks", "editor-v3"],
+    "keywords": ["symfony", "symfony-bundle", "auth", "jwt", "jwks", "2fa"],
     "require": {
         "php": ">=8.2",
         "ext-openssl": "*",

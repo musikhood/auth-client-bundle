@@ -76,7 +76,7 @@ final class AuthValidationListenerTest extends TestCase
             'displayName' => 'Jan',
             'roles' => ['ROLE_USER'],
             'panelId' => Uuid::uuid4()->toString(),
-            'panelName' => 'pim',
+            'panelName' => 'panel',
             'panelRoles' => ['EDIT'],
             'disabled' => false,
         ];

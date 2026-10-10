@@ -87,7 +87,7 @@ final class AuthBackendClientApiTokenTest extends TestCase
             'displayName' => 'Jan',
             'roles' => ['ROLE_ADMIN'],
             'panelId' => $panelId,
-            'panelName' => 'pim',
+            'panelName' => 'panel',
             'panelRoles' => ['PUBLISH'],
             'disabled' => false,
         ];

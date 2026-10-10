@@ -7,17 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1]
+
+### Changed (wymaga akcji)
+
+- **Usunięto domyślny adres auth servera — `AUTH_BASE_URL` wymagany** (jak `AUTH_PANEL_ID`, `AUTH_CLIENT_ID`,
+  `AUTH_CLIENT_SECRET`). `base_url` = `%env(AUTH_BASE_URL)%`, bez fallbacku; usunięta stała
+  `Configuration::DEFAULT_BASE_URL` i parametr `auth_client.default_base_url`. Brak zmiennej: `auth-client:doctor`
+  zgłasza ✘ z podpowiedzią (wartość z bazy dostępów, `secret_to_env`), `auth-client:install` dopisuje pusty
+  `AUTH_BASE_URL=` do `.env`. Aplikacje, które ustawiały `AUTH_BASE_URL` (albo `auth_client.base_url`) — bez zmian.
+
+### Added
+
+- `AI_INTEGRATION.md` — instrukcja integracji dla agentów AI (drzewo decyzji: backend z bundlem / front wprost do
+  auth servera / serwis z `X-Api-Token`; przepisy scalania z istniejącym kodem; pułapki; testy ręczne). Jest w paczce
+  composer (brak `export-ignore`); `auth-client:install` i `auth-client:doctor` wypisują ścieżkę do niej
+  (`Musikhood\AuthClient\AiGuide`).
+
+### Docs
+
+- Nazwy wewnętrzne i adresy konkretnej infrastruktury usunięte z dokumentacji, komentarzy i testów — przykłady
+  `example.com`. Test `tests/Meta/NoInternalNamesTest.php` pilnuje, żeby nie wróciły.
+
+- INTEGRATION.md: front `@musikhood-dev/auth-client` ≥ 2.3.1 z wersją wprost (`latest` to 2.1.0), etykieta
+  „Dodaj panel”, odesłanie do wariantu bez własnego backendu.
+
 ## [0.8.0]
 
 Instalacja „bez konfiguracji”: integrator podaje tylko dane panelu w env (`AUTH_PANEL_ID`, `AUTH_CLIENT_ID`,
 `AUTH_CLIENT_SECRET`), resztę robią `auth-client:install` i `auth-client:doctor`. Minor, wstecznie zgodny dla
-aplikacji z własnym repozytorium userów i pełną konfiguracją (PIM 0.7 działa bez zmian w kodzie).
+aplikacji z własnym repozytorium userów i pełną konfiguracją (integracje z 0.7 działają bez zmian w kodzie).
 
 ### Added
 
 - **Tryb bezstanowy (domyślny):** bez implementacji `PanelUserRepositoryInterface` w kontenerze bundle używa
   wbudowanego `Security\Stateless\StatelessPanelUserRepository` + `StatelessPanelUser` — bez encji, tabeli
-  i migracji. User z JWT + introspekcji; snapshot w `cache.app` (TTL 24 h), więc role zmienione w auth-panelu
+  i migracji. User z JWT + introspekcji; snapshot w `cache.app` (TTL 24 h), więc role zmienione w panelu administracyjnym
   propagują się w ≤ `validation_cache_ttl` jak przy tabeli. Mapa tożsamości per request czyszczona przez
   `kernel.reset` (worker mode). Własne repozytorium (`#[AsAlias]`) → działa jak dotąd.
 - **`bin/console auth-client:install`** (`--dry-run`, `--yes`, `--no-doctor`): `.env` (klucze `AUTH_*`
@@ -28,7 +53,7 @@ aplikacji z własnym repozytorium userów i pełną konfiguracją (PIM 0.7 dzia�
   Symfony < 7.2. Pokazuje diff i pyta przed zapisem; drugi run nic nie zmienia; na końcu uruchamia doctor.
 - **`bin/console auth-client:doctor`** (`--access-token`): ciasteczka — `same_site=none` bez `secure` = ostrzeżenie,
   `none` przy froncie w tej samej domenie co API = podpowiedź „lax wystarczy”; env, osiągalność auth servera (JWKS), poprawność
-  `client_id`/`client_secret` (introspekcja bez tokenu — bez zmian w API Core), trasy 2FA na auth serverze,
+  `client_id`/`client_secret` (introspekcja bez tokenu — bez zmian w auth serverze), trasy 2FA na auth serverze,
   zgodność `panel_id` z klientem (z tokenem), pokrycie tras w security (żywa konfiguracja), CORS, ciasteczka,
   trusted proxies, wersja. ✔ / ! / ✘ z podpowiedzią; exit code 1 przy błędzie; bez wypisywania sekretów.
 - `Routing\PublicRoutes` — jedno źródło listy tras publicznych (install, doctor, `AuthValidationListener`, testy).
@@ -38,11 +63,11 @@ aplikacji z własnym repozytorium userów i pełną konfiguracją (PIM 0.7 dzia�
 ### Changed
 
 - **Domyślne wartości konfiguracji** — `config/packages/auth_client.yaml` jest opcjonalny:
-  `base_url` = env `AUTH_BASE_URL`, bez niego `https://editor-v3-backend.vitkac.com` (produkcja);
+  `base_url` = env `AUTH_BASE_URL`, bez niego wbudowany adres produkcyjny (usunięty w 0.8.1);
   `panel_id` / `client_id` / `client_secret` = `%env(AUTH_PANEL_ID|AUTH_CLIENT_ID|AUTH_CLIENT_SECRET)%`;
   `cookie.domain` = `%env(default::AUTH_COOKIE_DOMAIN)%`; `cookie.same_site` bez zmian `lax`, `secure` bez zmian
-  `true`. Aplikacje ustawiające te klucze jawnie (PIM) — bez zmian. `same_site: none` ustaw tylko, gdy front i API
-  są w różnych domenach rejestrowalnych (subdomeny jednej domeny, np. `pim.vitkac.com` / `pim-api.vitkac.com`,
+  `true`. Aplikacje ustawiające te klucze jawnie — bez zmian. `same_site: none` ustaw tylko, gdy front i API
+  są w różnych domenach rejestrowalnych (subdomeny jednej domeny, np. `panel.example.com` / `panel-api.example.com`,
   działają z `lax`); wymaga `secure: true`.
 - `AuthCookieFactory`: pusta domena (np. nieustawione `AUTH_COOKIE_DOMAIN`) = ciasteczko host-only (wcześniej
   pusty atrybut `Domain=`).
@@ -215,7 +240,7 @@ backendowa introspekcja, a nie claim `aud` w tokenie.
    `null`), więc `PUBLIC_ACCESS` wystarcza — Symfony pomija wtedy authenticator
    dla tej ścieżki (osobny firewall nie jest potrzebny).
 3. W panelu admin auth servera ustaw pole „Webhook URL" dla swojego panelu na
-   bazowy URL swojego backendu (np. `https://pim.vitkac.com`). Auth server
+   bazowy URL swojego backendu (np. `https://api.example.com`). Auth server
    dokleja ścieżkę `/api/auth-client/webhook/user-invalidated`.
 4. Upewnij się, że `cache.app` jest skonfigurowane (Redis zalecany — współdzieli
    stan między procesami i przeżywa restart).
@@ -301,7 +326,7 @@ backendowa introspekcja, a nie claim `aud` w tokenie.
 
 ## [0.2.0] - 2026-05-07
 
-Wersja zsynchronizowana z auth serverem `editor_v3_backend@797be72`, gdzie
+Wersja zsynchronizowana z auth serverem (commit `797be72`), gdzie
 displayName został wprowadzony jako pełnoprawne pole encji użytkownika,
 a `/api/v1/user/me` rozszerzono o panel context i flagę `disabled`.
 
@@ -387,7 +412,7 @@ a `/api/v1/user/me` rozszerzono o panel context i flagę `disabled`.
 
 ### Added
 
-- Initial release, extracted from the PIM microservice's local `src/AuthClient/` module.
+- Initial release, extracted from a microservice's local `src/AuthClient/` module.
 - Cookie-based auth flow: `/api/login`, `/api/logout`, `/api/token/refresh`, `/api/v1/user/me`.
 - JWT validation via JWKS (cached, with rotation-aware refresh on unknown `kid`).
 - Per-request introspection against the auth server with TTL cache and circuit breaker.

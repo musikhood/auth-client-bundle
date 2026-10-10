@@ -24,7 +24,7 @@ use Symfony\Contracts\Service\ResetInterface;
  *      worker mode);
  *   2. a snapshot in `cache.app` written on flush(). It keeps the last /me
  *      state across requests and processes, so a role change made in the
- *      auth-panel propagates within the validation TTL (~30 s) exactly like
+ *      auth server's admin panel propagates within the validation TTL (~30 s) exactly like
  *      the persisted mirror — instead of waiting for the next JWT refresh
  *      (the auth server does not bump the token version on role changes).
  *
